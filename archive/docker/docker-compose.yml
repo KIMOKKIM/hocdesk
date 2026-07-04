@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: targetbridge-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: targetbridge
+      POSTGRES_PASSWORD: targetbridge_local
+      POSTGRES_DB: targetbridge
+    volumes:
+      - targetbridge_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U targetbridge -d targetbridge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  targetbridge_postgres_data:

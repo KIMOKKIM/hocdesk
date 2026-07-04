@@ -1,0 +1,518 @@
+import { COLLECTION_LIMITS } from "@/lib/config/collection-limits";
+import {
+  buildInitialSearchPlan,
+  CollectionJobType,
+} from "@/lib/constants/collection";
+import { enrichSearchPlanWithKakaoQueries } from "@/lib/collection/kakao-search-queries";
+import { processCollectionCandidate } from "@/lib/collection/candidate-pipeline";
+import { writeActivityLog } from "@/lib/audit/activity-log-service";
+import {
+  assertCollectionLimits,
+  countTodayNewCollectedCompanies,
+  getActiveInitialJob,
+  getCompletedInitialJob,
+} from "@/lib/collection/limits";
+import { collectionAudit, collectionError, collectionLog } from "@/lib/collection/logger";
+import {
+  getTargetSearchProvider,
+  resolveSearchProviderName,
+} from "@/lib/collection/providers";
+import { CompositeSearchProvider } from "@/lib/collection/providers/composite-search-provider";
+import { KakaoLocalSearchProvider } from "@/lib/collection/providers/kakao-local-search-provider";
+import type {
+  CollectionAuditEvent,
+  CollectionJobResult,
+  CollectionJobStats,
+  SearchPlan,
+  SearchProviderName,
+} from "@/lib/collection/types";
+import { applyTargetFit } from "@/lib/scoring/calculate-target-fit";
+import { prisma } from "@/lib/prisma";
+import {
+  recordProviderError,
+  recordProviderSuccess,
+} from "@/lib/db/search-provider-status";
+import { CollectionJobStatus, ReviewStatus } from "@/lib/constants/status";
+
+type RunInitialCollectionOptions = {
+  projectId: string;
+  force?: boolean;
+  confirmed?: boolean;
+  requestedCount?: number;
+  provider?: string;
+  dryRun?: boolean;
+  importMode?: "review" | "fast";
+};
+
+const BATCH_SIZE = 5;
+
+export async function runInitialCollection({
+  projectId,
+  force = false,
+  confirmed = false,
+  requestedCount = 30,
+  provider: providerOverride,
+  dryRun = false,
+  importMode,
+}: RunInitialCollectionOptions): Promise<CollectionJobResult> {
+  const project = await prisma.project.findUnique({ where: { id: projectId } });
+  if (!project) {
+    throw new Error("프로젝트를 찾을 수 없습니다.");
+  }
+
+  const activeJob = await getActiveInitialJob(projectId);
+  if (activeJob) {
+    throw new Error("이미 실행 중인 초기 수집 작업이 있습니다. 완료 후 다시 시도하세요.");
+  }
+
+  const completedJob = await getCompletedInitialJob(projectId);
+  if (completedJob && !force && !confirmed) {
+    throw new Error(
+      "이미 완료된 초기 수집이 있습니다. 재실행하려면 확인(confirmed=true) 후 요청하세요.",
+    );
+  }
+
+  let limits: {
+    todayCount: number;
+    pendingReview: number;
+    remainingDaily: number;
+  } = {
+    todayCount: 0,
+    pendingReview: 0,
+    remainingDaily: COLLECTION_LIMITS.maxNewCompaniesPerDay,
+  };
+  if (!dryRun) {
+    limits = await assertCollectionLimits(projectId);
+  }
+  const boundedRequest = Math.min(
+    requestedCount,
+    COLLECTION_LIMITS.maxInitialCandidates,
+    dryRun ? requestedCount : limits.remainingDaily,
+  );
+
+  if (boundedRequest <= 0 && !dryRun) {
+    throw new Error("일일 신규 등록 한도에 도달해 수집을 시작할 수 없습니다.");
+  }
+
+  const providerName = resolveSearchProviderName(providerOverride);
+  let searchPlan: SearchPlan = buildInitialSearchPlan(projectId, boundedRequest);
+  if (providerName === "kakao" || providerName === "composite") {
+    searchPlan = enrichSearchPlanWithKakaoQueries(searchPlan, providerName);
+  } else {
+    searchPlan = { ...searchPlan, provider: providerName };
+  }
+  searchPlan = {
+    ...searchPlan,
+    dryRun,
+    importMode: importMode ?? (providerName === "demo" ? "fast" : "review"),
+  };
+
+  const job = await prisma.targetCollectionJob.create({
+    data: {
+      projectId,
+      jobType: CollectionJobType.INITIAL,
+      status: CollectionJobStatus.QUEUED,
+      searchPlan,
+      requestedCount: boundedRequest,
+    },
+  });
+
+  collectionAudit(job.id, "INITIAL_COLLECTION_REQUESTED", {
+    provider: providerName,
+    projectId,
+    requestedCount: boundedRequest,
+  });
+  if (providerName !== "demo") {
+    collectionAudit(job.id, "EXTERNAL_SEARCH_REQUESTED", {
+      provider: providerName,
+      queryCount: searchPlan.queryCount ?? 0,
+    });
+  }
+  collectionLog(job.id, "작업 생성", {
+    provider: providerName,
+    projectId,
+    limits,
+    requestedCount: boundedRequest,
+  });
+
+  return runCollectionJob(job.id, {
+    projectLocation: project.location,
+    askingPrice: project.askingPrice,
+    providerOverride: providerName,
+    dryRun,
+  });
+}
+
+type RunCollectionJobContext = {
+  projectLocation?: string | null;
+  askingPrice?: bigint | null;
+  providerOverride?: SearchProviderName;
+  dryRun?: boolean;
+};
+
+export async function runCollectionJob(
+  jobId: string,
+  context: RunCollectionJobContext = {},
+): Promise<CollectionJobResult> {
+  const job = await prisma.targetCollectionJob.findUnique({
+    where: { id: jobId },
+  });
+
+  if (!job) {
+    throw new Error("수집 작업을 찾을 수 없습니다.");
+  }
+
+  if (job.status === CollectionJobStatus.RUNNING) {
+    throw new Error("이미 실행 중인 작업입니다.");
+  }
+
+  const projectId = job.projectId;
+  const searchPlan = job.searchPlan as SearchPlan;
+  const providerName = resolveSearchProviderName(
+    context.providerOverride ?? searchPlan.provider,
+  );
+  const provider = getTargetSearchProvider(providerName, job.id);
+  const auditPrefix =
+    job.jobType === CollectionJobType.EXPANSION ? "EXPANSION" : "INITIAL";
+  const createdEvent: CollectionAuditEvent =
+    auditPrefix === "EXPANSION" ? "EXPANSION_COMPANY_CREATED" : "COMPANY_CREATED";
+  const duplicateEvent: CollectionAuditEvent =
+    auditPrefix === "EXPANSION"
+      ? "EXPANSION_DUPLICATE_FOUND"
+      : "COMPANY_DUPLICATE_FOUND";
+  const startedEvent: CollectionAuditEvent = `${auditPrefix}_COLLECTION_STARTED`;
+  const completedEvent: CollectionAuditEvent = `${auditPrefix}_COLLECTION_COMPLETED`;
+  const failedEvent: CollectionAuditEvent = `${auditPrefix}_COLLECTION_FAILED`;
+  const isExternal = providerName !== "demo";
+  const dryRun = context.dryRun ?? searchPlan.dryRun ?? false;
+  const importMode = searchPlan.importMode ?? (providerName === "demo" ? "fast" : "review");
+
+  let collectedCount = job.collectedCount;
+  let acceptedCount = job.acceptedCount;
+  let duplicateCount = job.duplicateCount;
+  let rejectedCount = job.rejectedCount;
+  const gradeCounts = { A: 0, B: 0, C: 0, EXCLUDED: 0 };
+  let withPhone = 0;
+  let withoutWebsite = 0;
+  let withoutEmail = 0;
+
+  try {
+    await prisma.targetCollectionJob.update({
+      where: { id: job.id },
+      data: {
+        status: CollectionJobStatus.RUNNING,
+        startedAt: job.startedAt ?? new Date(),
+      },
+    });
+
+    collectionAudit(job.id, startedEvent, { jobType: job.jobType, provider: providerName });
+    if (isExternal) {
+      collectionAudit(job.id, "EXTERNAL_SEARCH_STARTED", { provider: providerName });
+    }
+    collectionLog(job.id, "수집 시작", { jobType: job.jobType, provider: providerName });
+
+    const candidates = await provider.searchCompanies(searchPlan);
+    collectionLog(job.id, "Provider 후보 반환", { count: candidates.length });
+
+    if (candidates.length === 0) {
+      throw new Error("업체 후보가 생성되지 않았습니다. 검색계획을 확인하세요.");
+    }
+
+    const kakaoContext =
+      provider instanceof KakaoLocalSearchProvider
+        ? provider.getContext()
+        : provider instanceof CompositeSearchProvider
+          ? provider.getKakaoContext()
+          : null;
+
+    if (kakaoContext) {
+      rejectedCount += kakaoContext.industryRejected;
+    }
+
+    const segmentCounts = new Map<string, number>();
+    const processLimit = job.requestedCount || searchPlan.maxTotal;
+
+    for (let index = 0; index < candidates.length; index += 1) {
+      if (acceptedCount >= processLimit) {
+        collectionLog(job.id, "요청 처리 한도 도달", { acceptedCount, processLimit });
+        break;
+      }
+
+      const pendingReview = dryRun
+        ? 0
+        : await prisma.projectCompany.count({
+            where: { projectId, reviewStatus: ReviewStatus.PENDING },
+          });
+      if (!dryRun && pendingReview >= COLLECTION_LIMITS.maxPendingReview) {
+        collectionLog(job.id, "검토 대기 한도 도달", { pendingReview });
+        break;
+      }
+
+      const todayNewCount = dryRun ? 0 : await countTodayNewCollectedCompanies();
+      if (!dryRun && todayNewCount >= COLLECTION_LIMITS.maxNewCompaniesPerDay) {
+        collectionLog(job.id, "일일 신규 한도 도달", { todayNewCount });
+        break;
+      }
+
+      const rawCandidate = candidates[index]!;
+      collectedCount += 1;
+
+      let candidate = provider.normalizeCompany(rawCandidate);
+      candidate = applyTargetFit(candidate, {
+        projectLocation: context.projectLocation,
+        askingPrice: context.askingPrice,
+      });
+
+      const validation = provider.validateCandidate(candidate);
+      if (!validation.valid) {
+        rejectedCount += 1;
+        collectionAudit(job.id, "COMPANY_REJECTED", {
+          name: candidate.companyName,
+          reason: validation.reason,
+        });
+        continue;
+      }
+
+      if (candidate.targetGrade === "EXCLUDED") {
+        rejectedCount += 1;
+        gradeCounts.EXCLUDED += 1;
+        collectionAudit(job.id, "COMPANY_REJECTED", {
+          name: candidate.companyName,
+          reason: "적합도 39점 이하",
+          fitScore: candidate.fitScore,
+        });
+        continue;
+      }
+
+      const segmentKey = candidate.detailedIndustry ?? "unknown";
+      const segmentCount = segmentCounts.get(segmentKey) ?? 0;
+      if (segmentCount >= searchPlan.maxPerSegment) {
+        rejectedCount += 1;
+        collectionAudit(job.id, "COMPANY_REJECTED", {
+          name: candidate.companyName,
+          reason: "업종별 한도 초과",
+        });
+        continue;
+      }
+
+      const processResult = await processCollectionCandidate({
+        candidate,
+        projectId,
+        jobId: job.id,
+        isExternal,
+        dryRun,
+        importMode,
+      });
+
+      if (processResult.action === "rejected") {
+        rejectedCount += 1;
+        continue;
+      }
+
+      if (processResult.action === "duplicate") {
+        duplicateCount += 1;
+        collectionAudit(job.id, isExternal ? "EXTERNAL_COMPANY_DUPLICATE" : duplicateEvent, {
+          name: candidate.companyName,
+        });
+        continue;
+      }
+
+      if (processResult.action === "queued") {
+        acceptedCount += 1;
+        segmentCounts.set(segmentKey, segmentCount + 1);
+        if (candidate.mainPhone) withPhone += 1;
+        if (!candidate.website) withoutWebsite += 1;
+        if (!candidate.generalEmail) withoutEmail += 1;
+        continue;
+      }
+
+      acceptedCount += 1;
+      segmentCounts.set(segmentKey, segmentCount + 1);
+      trackGrade(gradeCounts, candidate.targetGrade);
+
+      if (candidate.mainPhone) withPhone += 1;
+      if (!candidate.website) withoutWebsite += 1;
+      if (!candidate.generalEmail) withoutEmail += 1;
+
+      collectionAudit(job.id, isExternal ? "EXTERNAL_COMPANY_CREATED" : createdEvent, {
+        companyId: processResult.companyId,
+        name: candidate.companyName,
+        grade: candidate.targetGrade,
+        fitScore: candidate.fitScore,
+      });
+
+      if (acceptedCount % BATCH_SIZE === 0) {
+        await prisma.targetCollectionJob.update({
+          where: { id: job.id },
+          data: {
+            collectedCount,
+            acceptedCount,
+            duplicateCount,
+            rejectedCount,
+          },
+        });
+      }
+    }
+
+    const jobStats = buildJobStats({
+      provider: providerName,
+      searchPlan,
+      kakaoContext,
+      collectedCount,
+      acceptedCount,
+      duplicateCount,
+      rejectedCount,
+      withPhone,
+      withoutWebsite,
+      withoutEmail,
+    });
+
+    const updatedJob = await prisma.targetCollectionJob.update({
+      where: { id: job.id },
+      data: {
+        status: dryRun ? CollectionJobStatus.DRY_RUN : CollectionJobStatus.COMPLETED,
+        collectedCount,
+        acceptedCount,
+        duplicateCount,
+        rejectedCount,
+        jobStats,
+        completedAt: new Date(),
+      },
+    });
+
+    collectionAudit(job.id, completedEvent, {
+      collectedCount,
+      acceptedCount,
+      duplicateCount,
+      rejectedCount,
+      gradeCounts,
+    });
+    if (isExternal) {
+      collectionAudit(job.id, "EXTERNAL_SEARCH_COMPLETED", {
+        provider: providerName,
+        acceptedCount,
+        duplicateCount,
+        rejectedCount,
+        dryRun,
+      });
+      await writeActivityLog({
+        eventType: dryRun ? "EXTERNAL_SEARCH_COMPLETED" : "EXTERNAL_SEARCH_COMPLETED",
+        summary: dryRun
+          ? `외부 검색 미리보기 완료 (${acceptedCount}건 후보)`
+          : `외부 검색 완료 (신규 ${acceptedCount}건)`,
+        projectId,
+        collectionJobId: job.id,
+        metadata: { provider: providerName, dryRun, acceptedCount, duplicateCount },
+      });
+      if (!dryRun) {
+        await recordProviderSuccess(providerName);
+      }
+    }
+
+    return mapJobResult(updatedJob, gradeCounts, jobStats);
+  } catch (error) {
+    collectionError(job.id, "수집 실패", error);
+    collectionAudit(job.id, failedEvent, {
+      collectedCount,
+      acceptedCount,
+      duplicateCount,
+      rejectedCount,
+      message: error instanceof Error ? error.message : "unknown",
+    });
+    if (isExternal) {
+      collectionAudit(job.id, "EXTERNAL_SEARCH_FAILED", {
+        provider: providerName,
+        message: error instanceof Error ? error.message : "unknown",
+      });
+      await recordProviderError(
+        providerName,
+        error instanceof Error ? error.message : "unknown",
+      );
+    }
+
+    const updatedJob = await prisma.targetCollectionJob.update({
+      where: { id: job.id },
+      data: {
+        status: CollectionJobStatus.FAILED,
+        collectedCount,
+        acceptedCount,
+        duplicateCount,
+        rejectedCount,
+        errorMessage:
+          error instanceof Error ? error.message : "알 수 없는 오류",
+        completedAt: new Date(),
+      },
+    });
+
+    return mapJobResult(updatedJob, gradeCounts);
+  }
+}
+
+function buildJobStats(params: {
+  provider: string;
+  searchPlan: SearchPlan;
+  kakaoContext: ReturnType<KakaoLocalSearchProvider["getContext"]> | null;
+  collectedCount: number;
+  acceptedCount: number;
+  duplicateCount: number;
+  rejectedCount: number;
+  withPhone: number;
+  withoutWebsite: number;
+  withoutEmail: number;
+}): CollectionJobStats {
+  return {
+    provider: params.provider,
+    queryCount: params.searchPlan.queryCount ?? params.searchPlan.keywords.length,
+    apiCallCount: params.kakaoContext?.apiCallCount ?? 0,
+    rawResultCount: params.kakaoContext?.rawResultCount ?? params.collectedCount,
+    industryAccepted: params.kakaoContext?.industryAccepted ?? 0,
+    industryReview: params.kakaoContext?.industryReview ?? 0,
+    industryRejected: params.kakaoContext?.industryRejected ?? 0,
+    duplicateCount: params.duplicateCount,
+    acceptedCount: params.acceptedCount,
+    rejectedCount: params.rejectedCount,
+    withPhone: params.withPhone,
+    withoutWebsite: params.withoutWebsite,
+    withoutEmail: params.withoutEmail,
+    segmentBreakdown: [],
+  };
+}
+
+function trackGrade(
+  gradeCounts: { A: number; B: number; C: number; EXCLUDED: number },
+  grade?: string,
+) {
+  if (grade === "A") gradeCounts.A += 1;
+  else if (grade === "B") gradeCounts.B += 1;
+  else if (grade === "C") gradeCounts.C += 1;
+  else if (grade === "EXCLUDED") gradeCounts.EXCLUDED += 1;
+}
+
+function mapJobResult(
+  job: {
+    id: string;
+    status: string;
+    requestedCount: number;
+    collectedCount: number;
+    acceptedCount: number;
+    duplicateCount: number;
+    rejectedCount: number;
+    errorMessage: string | null;
+    jobStats?: unknown;
+  },
+  gradeCounts: { A: number; B: number; C: number; EXCLUDED: number },
+  jobStats?: CollectionJobStats | null,
+): CollectionJobResult {
+  return {
+    jobId: job.id,
+    status: job.status,
+    requestedCount: job.requestedCount,
+    collectedCount: job.collectedCount,
+    acceptedCount: job.acceptedCount,
+    duplicateCount: job.duplicateCount,
+    rejectedCount: job.rejectedCount,
+    gradeCounts,
+    jobStats: (jobStats ?? job.jobStats ?? null) as CollectionJobStats | null,
+    errorMessage: job.errorMessage,
+  };
+}

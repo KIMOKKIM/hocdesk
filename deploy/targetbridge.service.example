@@ -1,0 +1,17 @@
+[Unit]
+Description=TargetBridge AI (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/targetbridge-ai
+EnvironmentFile=/var/www/targetbridge-ai/.env
+Environment=NODE_ENV=production
+Environment=PORT=3001
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -p 3001
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

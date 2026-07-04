@@ -1,0 +1,276 @@
+import { EXTERNAL_SEARCH_LIMITS } from "@/lib/config/external-search-limits";
+import {
+  extractRegionFromAddress,
+  validateIndustryFit,
+} from "@/lib/collection/industry-validation";
+import {
+  buildKakaoSearchQueries,
+  enrichSearchPlanWithKakaoQueries,
+} from "@/lib/collection/kakao-search-queries";
+import { collectionAudit } from "@/lib/collection/logger";
+import {
+  delay,
+  isKakaoApiConfigured,
+  KakaoApiError,
+  searchKakaoLocal,
+} from "@/lib/collection/providers/kakao-local-client";
+import { normalizeCandidateBase, validateCandidateBase } from "@/lib/collection/providers/demo-search-provider";
+import type {
+  SearchCandidate,
+  SearchPlan,
+  TargetSearchProvider,
+  ValidationResult,
+} from "@/lib/collection/types";
+import { normalizeAddress, normalizePhone } from "@/lib/format";
+
+export type KakaoSearchContext = {
+  jobId?: string;
+  apiCallCount: number;
+  rawResultCount: number;
+  industryAccepted: number;
+  industryReview: number;
+  industryRejected: number;
+  pagesRequested: number;
+};
+
+export function assertKakaoConfigured() {
+  if (!isKakaoApiConfigured()) {
+    throw new KakaoApiError(
+      "KAKAO_REST_API_KEY가 설정되지 않았습니다. .env에 API 키를 입력한 후 개발 서버를 재시작하세요.",
+      503,
+      "MISSING_API_KEY",
+    );
+  }
+}
+
+export class KakaoLocalSearchProvider implements TargetSearchProvider {
+  readonly name = "kakao";
+  private context: KakaoSearchContext = createEmptyContext();
+
+  async searchCompanies(searchPlan: SearchPlan): Promise<SearchCandidate[]> {
+    assertKakaoConfigured();
+    this.context = createEmptyContext();
+
+    const enrichedPlan = enrichSearchPlanWithKakaoQueries(searchPlan, this.name);
+    const queries = buildKakaoSearchQueries(enrichedPlan).slice(
+      0,
+      EXTERNAL_SEARCH_LIMITS.maxQueriesPerJob,
+    );
+
+    if (queries.length === 0) {
+      throw new Error("Kakao 검색어가 생성되지 않았습니다.");
+    }
+
+    const seenExternalIds = new Set<string>();
+    const results: SearchCandidate[] = [];
+
+    for (const item of queries) {
+      if (results.length >= EXTERNAL_SEARCH_LIMITS.maxRawResultsPerJob) break;
+
+      for (let page = 1; page <= EXTERNAL_SEARCH_LIMITS.maxPagesPerQuery; page++) {
+        if (results.length >= EXTERNAL_SEARCH_LIMITS.maxRawResultsPerJob) break;
+
+        if (page > 1 || item !== queries[0]) {
+          await delay(EXTERNAL_SEARCH_LIMITS.requestDelayMs);
+        }
+
+        this.context.apiCallCount += 1;
+        this.context.pagesRequested += 1;
+
+        const response = await searchKakaoLocal({
+          query: item.query,
+          page,
+          size: EXTERNAL_SEARCH_LIMITS.pageSize,
+          sort: "accuracy",
+        });
+
+        this.context.rawResultCount += response.documents.length;
+
+        if (this.context.jobId) {
+          collectionAudit(this.context.jobId, "EXTERNAL_SEARCH_QUERY_COMPLETED", {
+            query: item.query,
+            page,
+            resultCount: response.documents.length,
+            segment: item.segment,
+          });
+        }
+
+        for (const place of response.documents) {
+          if (seenExternalIds.has(place.id)) continue;
+          seenExternalIds.add(place.id);
+
+          const candidate = this.mapPlaceToCandidate(place, item);
+          const validation = validateIndustryFit({
+            segmentName: item.segment,
+            companyName: candidate.companyName,
+            categoryName: candidate.categoryName,
+            categoryGroupName: candidate.categoryGroupName,
+            searchKeyword: item.query,
+            region: item.region,
+            address: candidate.address,
+          });
+
+          candidate.industryValidation = validation.result;
+          candidate.sourceConfidence = validation.confidence;
+          candidate.rawMetadata = {
+            validationScore: validation.score,
+            scoreBreakdown: validation.scoreBreakdown,
+            validationReason: validation.reason,
+          };
+
+          if (validation.result === "REJECT") {
+            this.context.industryRejected += 1;
+            if (this.context.jobId) {
+              collectionAudit(this.context.jobId, "EXTERNAL_COMPANY_REJECTED", {
+                name: candidate.companyName,
+                segment: item.segment,
+                reason: validation.reason,
+              });
+            }
+            continue;
+          }
+
+          if (validation.result === "REVIEW") {
+            this.context.industryReview += 1;
+          } else {
+            this.context.industryAccepted += 1;
+          }
+
+          results.push(candidate);
+        }
+
+        if (response.meta.is_end) break;
+      }
+    }
+
+    if (results.length === 0) {
+      throw new Error(
+        "Kakao 검색 결과가 없거나 업종 검증을 통과한 후보가 없습니다.",
+      );
+    }
+
+    return results.slice(0, searchPlan.maxTotal);
+  }
+
+  setJobContext(jobId: string) {
+    this.context.jobId = jobId;
+  }
+
+  getContext(): KakaoSearchContext {
+    return { ...this.context };
+  }
+
+  normalizeCompany(candidate: SearchCandidate): SearchCandidate {
+    const normalized = normalizeCandidateBase(candidate);
+    return {
+      ...normalized,
+      mainPhone: normalized.mainPhone ? normalizePhone(normalized.mainPhone) : null,
+      normalizedAddress: normalized.address
+        ? normalizeAddress(normalized.address)
+        : normalized.normalizedAddress,
+      website: null,
+      websiteDomain: null,
+      generalEmail: null,
+      representativeName: null,
+      employeeCount: null,
+      estimatedRevenue: null,
+      businessNumber: null,
+      corporateNumber: null,
+    };
+  }
+
+  validateCandidate(candidate: SearchCandidate): ValidationResult {
+    const base = validateCandidateBase(candidate);
+    if (!base.valid) return base;
+
+    if (candidate.isDemo) {
+      return { valid: false, reason: "실제 검색 Provider는 데모 업체를 허용하지 않습니다." };
+    }
+
+    if (candidate.companyName.includes("데모")) {
+      return { valid: false, reason: "데모 업체명은 실제 검색 결과로 등록할 수 없습니다." };
+    }
+
+    if (candidate.generalEmail) {
+      return { valid: false, reason: "확인되지 않은 이메일은 저장할 수 없습니다." };
+    }
+
+    if (candidate.website) {
+      return { valid: false, reason: "확인되지 않은 홈페이지는 저장할 수 없습니다." };
+    }
+
+    if (candidate.industryValidation === "REJECT") {
+      return { valid: false, reason: "업종 적합성 검증 실패" };
+    }
+
+    return { valid: true };
+  }
+
+  private mapPlaceToCandidate(
+    place: {
+      id: string;
+      place_name: string;
+      category_name: string;
+      category_group_name: string;
+      phone: string;
+      address_name: string;
+      road_address_name: string;
+      place_url: string;
+      x: string;
+      y: string;
+    },
+    queryItem: { segment: string; region: string; query: string; expectedUse: string },
+  ): SearchCandidate {
+    const segment = queryItem.segment;
+    const address = place.road_address_name || place.address_name || null;
+
+    return {
+      companyName: place.place_name.trim(),
+      industryGroup: segment,
+      detailedIndustry: segment,
+      region: extractRegionFromAddress(address) ?? queryItem.region,
+      address,
+      mainPhone: place.phone?.trim() || null,
+      website: null,
+      websiteDomain: null,
+      generalEmail: null,
+      representativeName: null,
+      employeeCount: null,
+      estimatedRevenue: null,
+      currentFacilityType: place.category_group_name || null,
+      sourceType: "KAKAO_LOCAL",
+      sourceUrl: place.place_url || null,
+      searchKeyword: queryItem.query,
+      discoveredReason: `KakaoLocal: ${segment} / ${queryItem.query} / ${queryItem.region}`,
+      recommendedUse: queryItem.expectedUse,
+      targetingReason: `${queryItem.region} 일대 ${segment} 업종 — Kakao Local 검색`,
+      riskFactors: "외부 검색 데이터 — 현장 실사 및 연락처 확인 필요",
+      externalId: place.id,
+      provider: this.name,
+      placeName: place.place_name,
+      categoryName: place.category_name,
+      categoryGroupName: place.category_group_name,
+      placeUrl: place.place_url,
+      latitude: place.x,
+      longitude: place.y,
+      rawAddress: place.address_name,
+      roadAddress: place.road_address_name,
+      isDemo: false,
+      rawMetadata: {
+        category_name: place.category_name,
+        category_group_name: place.category_group_name,
+      },
+    };
+  }
+}
+
+function createEmptyContext(): KakaoSearchContext {
+  return {
+    apiCallCount: 0,
+    rawResultCount: 0,
+    industryAccepted: 0,
+    industryReview: 0,
+    industryRejected: 0,
+    pagesRequested: 0,
+  };
+}

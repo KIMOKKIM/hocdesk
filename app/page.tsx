@@ -1,64 +1,123 @@
-import Image from "next/image";
+import Link from "next/link";
+import {
+  ArrowRight,
+  BarChart3,
+  Building2,
+  Mail,
+  Shield,
+  Sparkles,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { APP_NAME } from "@/lib/config";
 
-export default function Home() {
+const features = [
+  {
+    icon: Building2,
+    title: "타깃 업체 관리",
+    description:
+      "매각 프로젝트별 타깃을 등급화하고 검토·승인 워크플로를 체계적으로 운영합니다.",
+  },
+  {
+    icon: Sparkles,
+    title: "AI 타깃 제안",
+    description:
+      "산업군·재무 프로필 기반으로 신규 타깃을 자동 제안하고 담당자 검토를 지원합니다.",
+  },
+  {
+    icon: Mail,
+    title: "이메일 아웃리치",
+    description:
+      "초안 작성부터 승인, 발송까지 B2B 영업 커뮤니케이션을 한 화면에서 관리합니다.",
+  },
+  {
+    icon: BarChart3,
+    title: "업무 대시보드",
+    description:
+      "검토 대기, 승인 대기, 발송 현황을 실시간으로 파악하는 PC 우선 업무 화면입니다.",
+  },
+];
+
+export default function HomePage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      <header className="border-b bg-white/80 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Building2 className="size-5" />
+            </div>
+            <span className="text-lg font-semibold">{APP_NAME}</span>
+          </div>
+          <Button
+            nativeButton={false}
+            render={
+              <Link href="/dashboard">
+                대시보드 이동
+                <ArrowRight data-icon="inline-end" />
+              </Link>
+            }
+          />
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-6 py-16">
+        <section className="max-w-3xl">
+          <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+            <Shield className="size-4" />
+            B2B 기업금융 · M&A 영업 자동화
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900 md:text-5xl">
+            타깃 발굴부터
+            <br />
+            이메일 아웃리치까지 한 곳에서
+          </h1>
+          <p className="mt-6 text-lg leading-8 text-muted-foreground">
+            {APP_NAME}는 매각 프로젝트 타깃 관리, AI 기반 신규 제안, 이메일
+            초안·승인·발송 워크플로를 통합하는 기업 영업 자동화 플랫폼입니다.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Button
+              size="lg"
+              nativeButton={false}
+              render={
+                <Link href="/dashboard">
+                  업무 대시보드 시작
+                  <ArrowRight data-icon="inline-end" />
+                </Link>
+              }
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+            <Button
+              size="lg"
+              variant="outline"
+              nativeButton={false}
+              render={
+                <Link href="/projects">매각 프로젝트 보기</Link>
+              }
+            />
+          </div>
+        </section>
+
+        <section className="mt-20 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+          {features.map((feature) => {
+            const Icon = feature.icon;
+            return (
+              <Card key={feature.title} className="border-border/80 shadow-sm">
+                <CardHeader>
+                  <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Icon className="size-5" />
+                  </div>
+                  <CardTitle className="text-base">{feature.title}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    {feature.description}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </section>
       </main>
     </div>
   );

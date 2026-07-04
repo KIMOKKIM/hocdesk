@@ -1,0 +1,308 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Project {
+  id                 String    @id @default(cuid())
+  name               String
+  companyName        String
+  projectType        String
+  status             String    @default("ACTIVE")
+  location           String?
+  askingPrice        BigInt?
+  summary            String?
+  propertyType       String?
+  landArea           String?
+  buildingArea       String?
+  desiredClosingDate DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  projectCompanies           ProjectCompany[]
+  dailyActivities            DailyActivity[]
+  targetExpansionSuggestions TargetExpansionSuggestion[]
+  targetCollectionJobs       TargetCollectionJob[]
+  outreachs                  Outreach[]
+  discoveredCandidates       DiscoveredCandidate[]
+  activityLogs               ActivityLog[]
+}
+
+model Company {
+  id                  String    @id @default(cuid())
+  companyName         String
+  normalizedName      String
+  businessNumber      String?   @unique
+  corporateNumber     String?
+  industryGroup       String?
+  detailedIndustry    String?
+  website             String?
+  websiteDomain       String?
+  address             String?
+  normalizedAddress   String?
+  region              String?
+  representativeName  String?
+  mainPhone           String?
+  generalEmail        String?
+  employeeCount       Int?
+  estimatedRevenue    String?
+  currentFacilityType String?
+  status              String    @default("NEW")
+  verificationMemo    String?
+  lastVerifiedAt      DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  projectCompanies ProjectCompany[]
+  contacts         Contact[]
+  sources          CompanySource[]
+  outreachs        Outreach[]
+}
+
+model ProjectCompany {
+  id                   String   @id @default(cuid())
+  projectId            String
+  companyId            String
+  targetGrade          String   @default("C")
+  fitScore             Int      @default(0)
+  financialScore       Int      @default(0)
+  locationScore        Int      @default(0)
+  facilityNeedScore    Int      @default(0)
+  expansionSignalScore Int      @default(0)
+  decisionMakerScore   Int      @default(0)
+  recommendedUse       String?
+  targetingReason      String?
+  riskFactors          String?
+  reviewStatus         String   @default("PENDING")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, companyId])
+}
+
+model Contact {
+  id                      String    @id @default(cuid())
+  companyId               String
+  contactName             String?
+  jobTitle                String?
+  department              String?
+  email                   String?
+  mobile                  String?
+  source                  String?
+  verified                Boolean   @default(false)
+  lastVerifiedAt          DateTime?
+  contactPermissionStatus String    @default("UNKNOWN")
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  outreachs Outreach[]
+}
+
+model CompanySource {
+  id               String    @id @default(cuid())
+  companyId        String
+  sourceType       String
+  sourceUrl        String?
+  searchKeyword    String?
+  discoveredReason String?
+  provider         String?
+  externalId       String?
+  rawMetadata      Json?
+  sourceConfidence String?
+  lastVerifiedAt   DateTime?
+  collectedAt      DateTime  @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, provider, externalId])
+  @@index([companyId, sourceUrl, searchKeyword])
+}
+
+model DailyActivity {
+  id                  String    @id @default(cuid())
+  projectId           String
+  activityDate        DateTime
+  rawText             String
+  summary             String?
+  activityType        String    @default("OTHER")
+  result              String?
+  contactedCompanyIds Json?
+  aiAnalysis          Json?
+  nextActionDate      DateTime?
+  memo                String?
+  createdAt           DateTime  @default(now())
+
+  project                    Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  targetExpansionSuggestions TargetExpansionSuggestion[]
+}
+
+model TargetExpansionSuggestion {
+  id                  String    @id @default(cuid())
+  projectId           String
+  dailyActivityId     String?
+  segmentName         String
+  reason              String
+  evidence            Json?
+  recommendationScore Int       @default(0)
+  priority            String    @default("MEDIUM")
+  status              String    @default("PENDING")
+  proposedRegions     Json?
+  proposedKeywords    Json?
+  proposedTargetCount Int       @default(0)
+  reviewedAt          DateTime?
+  approvedAt          DateTime?
+  rejectedReason      String?
+  createdAt           DateTime  @default(now())
+
+  project        Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  dailyActivity  DailyActivity?        @relation(fields: [dailyActivityId], references: [id], onDelete: SetNull)
+  collectionJobs TargetCollectionJob[]
+}
+
+model TargetCollectionJob {
+  id             String    @id @default(cuid())
+  projectId      String
+  suggestionId   String?
+  jobType        String
+  status         String    @default("QUEUED")
+  searchPlan     Json
+  requestedCount Int       @default(0)
+  collectedCount Int       @default(0)
+  acceptedCount  Int       @default(0)
+  duplicateCount Int       @default(0)
+  rejectedCount  Int       @default(0)
+  errorMessage   String?
+  jobStats       Json?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  project              Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  suggestion           TargetExpansionSuggestion? @relation(fields: [suggestionId], references: [id], onDelete: SetNull)
+  discoveredCandidates DiscoveredCandidate[]
+}
+
+model DiscoveredCandidate {
+  id                String    @id @default(cuid())
+  projectId         String
+  collectionJobId   String?
+  provider          String
+  externalId        String?
+  companyName       String
+  normalizedName    String
+  industryGroup     String?
+  segmentName       String?
+  categoryName      String?
+  categoryGroupName String?
+  phone             String?
+  address           String?
+  roadAddress       String?
+  region            String?
+  placeUrl          String?
+  searchKeyword     String?
+  sourceConfidence  String?
+  validationStatus  String    @default("DISCOVERED")
+  validationScore   Int       @default(0)
+  rejectionReason   String?
+  duplicateOfId     String?
+  isDuplicate       Boolean   @default(false)
+  fitScore          Int       @default(0)
+  targetGrade       String?
+  recommendedUse    String?
+  targetingReason   String?
+  rawMetadata       Json?
+  discoveredAt      DateTime  @default(now())
+  reviewedAt        DateTime?
+  importedAt        DateTime?
+  importedCompanyId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  project       Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  collectionJob TargetCollectionJob? @relation(fields: [collectionJobId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, validationStatus])
+  @@index([provider, externalId])
+  @@index([collectionJobId])
+}
+
+model ActivityLog {
+  id               String   @id @default(cuid())
+  projectId        String?
+  companyId        String?
+  projectCompanyId String?
+  outreachId       String?
+  collectionJobId  String?
+  eventType        String
+  actorType        String   @default("SYSTEM")
+  actorId          String?
+  summary          String
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([companyId])
+}
+
+model Outreach {
+  id                String    @id @default(cuid())
+  projectId         String
+  companyId         String
+  projectCompanyId  String?
+  contactId         String?
+  emailType         String
+  subject           String
+  emailBody         String
+  status            String    @default("DRAFT")
+  approvalStatus    String    @default("DRAFT")
+  templateType      String?
+  generationMethod  String?
+  draftVersion      Int       @default(1)
+  contentHash       String?
+  approvedAt        DateTime?
+  approvedBy        String?
+  rejectionReason   String?
+  scheduledAt       DateTime?
+  sentAt            DateTime?
+  repliedAt         DateTime?
+  replyType         String?
+  replySummary      String?
+  replySentiment    String?
+  nextActionDate    DateTime?
+  provider          String?
+  providerMessageId String?
+  failureReason     String?
+  errorMessage      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SuppressionList {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  companyName String?
+  reason      String?
+  optedOutAt  DateTime @default(now())
+  source      String?
+}
