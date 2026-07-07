@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# TargetBridge AI 배포 스크립트 (A안: 자체 서버)
+# DEPRECATED — Vercel 배포에서는 사용하지 않습니다. DEPLOYMENT-VERCEL.md 참고.
+# TargetBridge AI 배포 스크립트 (레거시 자체 서버)
 # 사용: ./deploy/deploy.sh
 # 주의: db push만 실행하며 reset/seed는 실행하지 않습니다.
 
@@ -34,7 +35,7 @@ pm2 startOrReload deploy/ecosystem.config.cjs --update-env
 
 echo "==> Health check"
 sleep 3
-curl -fsS "http://127.0.0.1:3001/targetbridge/api/health" | tee /tmp/targetbridge-health.json
+curl -fsS "http://127.0.0.1:3001/Jinwoong/api/health" | tee /tmp/targetbridge-health.json
 
 echo "==> Deploy complete: ${RELEASE_TAG}"
-echo "    Public URL: https://teomokdesk.pe.kr/targetbridge/api/health"
+echo "    Public URL: https://hocdesk.pe.kr/Jinwoong/api/health"

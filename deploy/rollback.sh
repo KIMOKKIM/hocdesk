@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# TargetBridge AI 롤백 스크립트
+# DEPRECATED — Vercel 배포에서는 사용하지 않습니다. DEPLOYMENT-VERCEL.md 참고.
 # 사용: ./deploy/rollback.sh <git-ref>
 # 예:   ./deploy/rollback.sh HEAD~1
 
@@ -27,6 +27,6 @@ mkdir -p logs
 pm2 startOrReload deploy/ecosystem.config.cjs --update-env
 
 sleep 3
-curl -fsS "http://127.0.0.1:3001/targetbridge/api/health"
+curl -fsS "http://127.0.0.1:3001/Jinwoong/api/health"
 
 echo "==> Rollback complete (DB schema는 migrate deploy 상태 유지 — down migration 없음)"
