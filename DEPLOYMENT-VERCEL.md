@@ -97,7 +97,7 @@ npm run turso:test
 
 1. Vercel TargetBridge 프로젝트에 `hocdesk.pe.kr` 도메인 연결
 2. DNS 설정
-3. `middleware.ts`가 `/` → `/Jinwoong` redirect 처리
+3. 도메인 루트(`/`) 접속 시 middleware가 `/Jinwoong`으로 1회 redirect (raw URL 기준, 루프 없음)
 4. 최종 접속: `https://hocdesk.pe.kr/Jinwoong`
 
 ### 시나리오 B — hocdesk.pe.kr에 기존 서비스가 있는 경우
