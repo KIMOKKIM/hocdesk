@@ -16,7 +16,13 @@ export function isProductionEnvironment(): boolean {
   return process.env.VERCEL === "1";
 }
 
+/** Next.js production build (page data collection, static analysis). */
+export function isNextBuildPhase(): boolean {
+  return process.env.NEXT_PHASE === "phase-production-build";
+}
+
 export function assertProductionDatabaseProvider(): void {
+  if (isNextBuildPhase()) return;
   if (!isProductionEnvironment()) return;
 
   const provider = resolveDatabaseProvider();

@@ -22,24 +22,42 @@
 
 ---
 
-## 2. Vercel 환경변수 (운영)
+## 2. Vercel 환경변수 (운영, 필수)
+
+Vercel Dashboard → Project → Settings → Environment Variables
+
+| 변수 | 값 | 비고 |
+|------|-----|------|
+| `APP_URL` | `https://hocdesk.pe.kr/Jinwoong` | 운영 canonical URL |
+| `NEXT_PUBLIC_BASE_PATH` | `/Jinwoong` | basePath (대소문자 유지) |
+| `DATABASE_PROVIDER` | `turso` | 운영 필수 |
+| `TURSO_DATABASE_URL` | *(Turso libsql URL)* | 비밀 |
+| `TURSO_AUTH_TOKEN` | *(Turso auth token)* | 비밀 |
+| `ADMIN_ACCESS_KEY` | *(강력한 랜덤 문자열)* | 쓰기 API·로그인 |
+| `TARGET_SEARCH_PROVIDER` | `kakao` | Kakao 검색 |
+| `KAKAO_REST_API_KEY` | *(Kakao REST API 키)* | 비밀 |
+| `AI_PROVIDER` | `rules` | 규칙 기반 분석 |
+| `EMAIL_PROVIDER` | `console` | 실발송 없음 |
+| `INCLUDE_DEMO_DATA` | `false` | 운영 데모 데이터 제외 |
+| `NODE_ENV` | `production` | Vercel 기본값 |
 
 ```
 APP_URL=https://hocdesk.pe.kr/Jinwoong
 NEXT_PUBLIC_BASE_PATH=/Jinwoong
 DATABASE_PROVIDER=turso
-TURSO_DATABASE_URL=...
-TURSO_AUTH_TOKEN=...
+TURSO_DATABASE_URL=
+TURSO_AUTH_TOKEN=
+ADMIN_ACCESS_KEY=
 TARGET_SEARCH_PROVIDER=kakao
-KAKAO_REST_API_KEY=...
+KAKAO_REST_API_KEY=
 AI_PROVIDER=rules
 EMAIL_PROVIDER=console
 INCLUDE_DEMO_DATA=false
-ADMIN_ACCESS_KEY=<강력한 랜덤 문자열>
-NODE_ENV=production
 ```
 
-비밀키에 `NEXT_PUBLIC_` 접두사를 붙이지 마세요.
+- `TURSO_*`, `ADMIN_ACCESS_KEY`, `KAKAO_REST_API_KEY`는 **런타임**에 검증됩니다. 빌드 단계에서 미설정이어도 `next build`는 통과합니다.
+- 비밀키에 `NEXT_PUBLIC_` 접두사를 붙이지 마세요.
+- `.env`, `dev.db`, 실제 키는 Git에 포함하지 마세요.
 
 ---
 

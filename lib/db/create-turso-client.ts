@@ -1,8 +1,8 @@
-import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { PrismaClient } from "@/app/generated/prisma/client";
+import { isNextBuildPhase } from "@/lib/db/database-provider";
 
 const globalForTurso = globalThis as unknown as {
-  tursoAdapter?: PrismaLibSql;
+  tursoAdapter?: import("@prisma/adapter-libsql").PrismaLibSql;
   tursoPrisma?: PrismaClient;
 };
 
@@ -25,7 +25,16 @@ export function createTursoPrismaClient(): PrismaClient {
     return globalForTurso.tursoPrisma;
   }
 
+  if (isNextBuildPhase()) {
+    throw new Error("Turso Prisma client cannot be created during Next.js build.");
+  }
+
   const config = resolveTursoConfig();
+  /* eslint-disable @typescript-eslint/no-require-imports -- avoid loading libsql adapter unless turso provider is active */
+  const { PrismaLibSql } =
+    require("@prisma/adapter-libsql") as typeof import("@prisma/adapter-libsql");
+  /* eslint-enable @typescript-eslint/no-require-imports */
+
   if (!globalForTurso.tursoAdapter) {
     globalForTurso.tursoAdapter = new PrismaLibSql(config);
   }

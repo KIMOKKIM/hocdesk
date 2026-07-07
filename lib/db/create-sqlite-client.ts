@@ -1,8 +1,8 @@
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "@/app/generated/prisma/client";
+import { isNextBuildPhase } from "@/lib/db/database-provider";
 
 const globalForSqlite = globalThis as unknown as {
-  sqliteAdapter?: PrismaBetterSqlite3;
+  sqliteAdapter?: import("@prisma/adapter-better-sqlite3").PrismaBetterSqlite3;
   sqlitePrisma?: PrismaClient;
 };
 
@@ -14,7 +14,7 @@ function resolveSqliteUrl(): string {
     );
   }
   if (!url.startsWith("file:")) {
-    throw new Error('DATABASE_URL은 SQLite file: 형식이어야 합니다.');
+    throw new Error("DATABASE_URL은 SQLite file: 형식이어야 합니다.");
   }
   return url;
 }
@@ -24,7 +24,16 @@ export function createSqlitePrismaClient(): PrismaClient {
     return globalForSqlite.sqlitePrisma;
   }
 
+  if (isNextBuildPhase()) {
+    throw new Error("SQLite Prisma client cannot be created during Next.js build.");
+  }
+
   const url = resolveSqliteUrl();
+  /* eslint-disable @typescript-eslint/no-require-imports -- avoid loading better-sqlite3 unless sqlite provider is active */
+  const { PrismaBetterSqlite3 } =
+    require("@prisma/adapter-better-sqlite3") as typeof import("@prisma/adapter-better-sqlite3");
+  /* eslint-enable @typescript-eslint/no-require-imports */
+
   if (!globalForSqlite.sqliteAdapter) {
     globalForSqlite.sqliteAdapter = new PrismaBetterSqlite3({ url });
   }

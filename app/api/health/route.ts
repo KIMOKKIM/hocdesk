@@ -35,6 +35,11 @@ export async function GET() {
 
   let database: "connected" | "error" = "connected";
   try {
+    if (databaseProvider === "turso") {
+      if (!process.env.TURSO_DATABASE_URL?.trim() || !process.env.TURSO_AUTH_TOKEN?.trim()) {
+        throw new Error("Turso credentials are not configured");
+      }
+    }
     await prisma.$queryRaw`SELECT 1`;
   } catch {
     database = "error";
