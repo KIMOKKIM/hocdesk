@@ -5,12 +5,13 @@ import {
   assessDatabaseReadiness,
   resolveHealthStatus,
 } from "@/lib/db/readiness";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const readiness = await assessDatabaseReadiness();
+  const readiness = await assessDatabaseReadiness(prisma);
   const status = resolveHealthStatus(readiness);
 
   if (isProductionEnvironment() && readiness.databaseProvider === "sqlite") {

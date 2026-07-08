@@ -1,11 +1,9 @@
-import "server-only";
 import type { PrismaClient } from "@/app/generated/prisma/client";
 import {
   isProductionEnvironment,
   resolveDatabaseProvider,
 } from "@/lib/db/database-provider";
 import { isDatabaseSetupError } from "@/lib/db/errors";
-import { prisma } from "@/lib/prisma";
 import { OPERATIONAL_PROJECT_ID } from "@/lib/seed/operational-seed";
 import {
   TURSO_SCHEMA_TABLES,
@@ -92,7 +90,7 @@ function isSchemaReady(tableChecks: TursoTableCheckMap): boolean {
 }
 
 export async function assessDatabaseReadiness(
-  client: PrismaClient = prisma,
+  client: PrismaClient,
 ): Promise<DatabaseReadinessResult> {
   let databaseProvider: string;
   try {
