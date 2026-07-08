@@ -21,8 +21,9 @@ export default async function AppLayout({
   if (projects === null) {
     return (
       <DashboardShell projects={[]}>
-        <div className="p-6">
+        <div className="space-y-6 p-6">
           <DbSetupAlert />
+          {children}
         </div>
       </DashboardShell>
     );
