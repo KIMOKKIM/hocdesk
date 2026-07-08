@@ -33,19 +33,23 @@ export async function GET() {
     );
   }
 
-  let database: "connected" | "error" = "connected";
+  let database: "connected" | "error" | "missing-credentials" = "connected";
   try {
     if (databaseProvider === "turso") {
       if (!process.env.TURSO_DATABASE_URL?.trim() || !process.env.TURSO_AUTH_TOKEN?.trim()) {
+        database = "missing-credentials";
         throw new Error("Turso credentials are not configured");
       }
     }
     await prisma.$queryRaw`SELECT 1`;
   } catch {
-    database = "error";
+    if (database !== "missing-credentials") {
+      database = "error";
+    }
   }
 
-  const status = database === "connected" ? "ok" : "degraded";
+  const status =
+    database === "connected" ? "ok" : database === "missing-credentials" ? "error" : "degraded";
 
   return NextResponse.json(
     {
@@ -56,6 +60,11 @@ export async function GET() {
       basePath: BASE_PATH,
       environment: process.env.NODE_ENV ?? "development",
       timestamp: new Date().toISOString(),
+      ...(database === "missing-credentials"
+        ? {
+            hint: "Vercel에 TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, DATABASE_PROVIDER=turso를 설정하세요.",
+          }
+        : {}),
     },
     { status: status === "ok" ? 200 : 503 },
   );

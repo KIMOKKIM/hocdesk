@@ -1,15 +1,34 @@
 export type DatabaseProviderName = "sqlite" | "turso";
 
 export function resolveDatabaseProvider(): DatabaseProviderName {
-  const raw = (process.env.DATABASE_PROVIDER ?? "sqlite").trim().toLowerCase();
+  const raw = (process.env.DATABASE_PROVIDER ?? "").trim().toLowerCase();
+  const onVercel = process.env.VERCEL === "1";
+  const hasTursoUrl = Boolean(process.env.TURSO_DATABASE_URL?.trim());
 
-  if (raw === "sqlite" || raw === "turso") {
-    return raw;
+  if (raw === "turso") {
+    return "turso";
   }
 
-  throw new Error(
-    `DATABASE_PROVIDER="${raw}"는 지원하지 않습니다. "sqlite" 또는 "turso"를 사용하세요.`,
-  );
+  if (raw === "sqlite") {
+    // Vercel에 sqlite가 잘못 설정된 경우 Turso URL이 있으면 turso 사용
+    if (onVercel && hasTursoUrl) {
+      return "turso";
+    }
+    return "sqlite";
+  }
+
+  if (raw !== "") {
+    throw new Error(
+      `DATABASE_PROVIDER="${raw}"는 지원하지 않습니다. "sqlite" 또는 "turso"를 사용하세요.`,
+    );
+  }
+
+  // 미설정: Vercel 운영은 turso, 로컬은 sqlite
+  if (onVercel) {
+    return "turso";
+  }
+
+  return "sqlite";
 }
 
 export function isProductionEnvironment(): boolean {
