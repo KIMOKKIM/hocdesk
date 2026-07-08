@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DbSetupAlert } from "@/components/ui/db-setup-alert";
+import { DbSetupPageNotice } from "@/components/ui/db-setup-page-notice";
 import { DemoDataToggle } from "@/components/ui/demo-data-toggle";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
@@ -53,7 +53,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           title="대시보드"
           description="프로젝트 전체 현황과 최근 활동을 한눈에 확인합니다."
         />
-        <DbSetupAlert />
+        <DbSetupPageNotice resource="대시보드 데이터" />
       </div>
     );
   }

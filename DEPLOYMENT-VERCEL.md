@@ -61,27 +61,84 @@ INCLUDE_DEMO_DATA=false
 
 ---
 
-## 3. Turso 초기화
+## 3. 운영 DB 최초 초기화 (Turso)
+
+Vercel 배포 후 `/api/health`가 `setup_required`이면 아래 순서를 따릅니다.
+
+### 3-1. Vercel 환경변수 설정
+
+섹션 2의 `DATABASE_PROVIDER`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`을 설정합니다.
+
+### 3-2. 로컬 `.env`에 같은 Turso 값 설정
+
+로컬 `.env`의 Turso URL/토큰이 **Vercel과 동일한 DB**를 가리켜야 schema/seed가 운영 DB에 반영됩니다.
+
+> `dev.db`(SQLite)는 Vercel 운영 DB가 **아닙니다**.
+
+### 3-3. 초기화 명령 (로컬 PowerShell/터미널)
 
 ```bash
-# schema push (dry-run)
-npx tsx scripts/push-schema-to-turso.ts
-
-# schema push (적용)
-npx tsx scripts/push-schema-to-turso.ts --apply
-
-# 최소 운영 seed (데모 제외)
-npx tsx scripts/seed-turso.ts --apply
-
-# 연결 테스트
 npm run turso:test
+npm run turso:schema:apply
+npm run turso:seed:apply
+npm run turso:check
 ```
 
-키가 없으면 `turso:test`는 SKIP으로 종료합니다.
+한 번에 실행:
+
+```bash
+npm run turso:setup
+```
+
+### 3-4. Vercel Redeploy
+
+환경변수 변경 후 Vercel에서 재배포합니다.
+
+### 3-5. 확인
+
+```
+https://hocdesk.pe.kr/Jinwoong/api/health
+https://hocdesk.pe.kr/Jinwoong/projects
+https://hocdesk.pe.kr/Jinwoong/dashboard
+```
+
+`/api/health` 기대값 (준비 완료):
+
+```json
+{
+  "status": "ok",
+  "database": "connected",
+  "schemaReady": true,
+  "seedReady": true,
+  "checks": { "jinwoongProject": true }
+}
+```
+
+### 주의
+
+- Turso seed는 **반복 실행 가능** (upsert, 중복 생성 없음)
+- `--include-demo` 없이는 **데모 업체가 들어가지 않음**
+- 비밀키는 Git에 커밋하지 않음
 
 ---
 
-## 4. 관리자 보호
+## 4. Turso 스크립트 요약
+
+| 명령 | 설명 |
+|------|------|
+| `npm run turso:test` | 연결 + readiness + row count |
+| `npm run turso:schema` | schema push dry-run |
+| `npm run turso:schema:apply` | schema push 적용 |
+| `npm run turso:seed` | seed dry-run |
+| `npm run turso:seed:apply` | 진웅산업 + AppSetting seed |
+| `npm run turso:check` | 테이블/seed 점검 |
+| `npm run turso:setup` | schema + seed + check 일괄 |
+
+키가 없으면 `turso:test` / `turso:check`는 SKIP으로 종료합니다.
+
+---
+
+## 5. 관리자 보호
 
 운영 환경에서 `ADMIN_ACCESS_KEY` 미설정 시 **쓰기 API가 비활성화**됩니다.
 
@@ -91,7 +148,7 @@ npm run turso:test
 
 ---
 
-## 5. 도메인 시나리오
+## 6. 도메인 시나리오
 
 ### 시나리오 A — hocdesk.pe.kr 전체가 TargetBridge
 
@@ -121,7 +178,7 @@ npm run turso:test
 
 ---
 
-## 6. 로컬 개발
+## 7. 로컬 개발
 
 ```bash
 cp .env.example .env
@@ -135,7 +192,7 @@ npm run dev
 
 ---
 
-## 7. 빌드 검증
+## 8. 빌드 검증
 
 ```bash
 npm run lint
@@ -146,7 +203,7 @@ BASE_URL=http://localhost:3000/Jinwoong npm run verify:deployment
 
 ---
 
-## 8. Vercel에서 사용자가 설정할 항목
+## 9. Vercel에서 사용자가 설정할 항목
 
 1. Git 연결 및 Deploy
 2. 환경변수 (섹션 2)
@@ -157,7 +214,7 @@ BASE_URL=http://localhost:3000/Jinwoong npm run verify:deployment
 
 ---
 
-## 9. 제한
+## 10. 제한
 
 - Cron 자동 활성화 없음
 - Gmail 실발송 미구현 (`EMAIL_PROVIDER=console`)

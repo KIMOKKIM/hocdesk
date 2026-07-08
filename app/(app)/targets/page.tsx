@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DbSetupAlert } from "@/components/ui/db-setup-alert";
+import { DbSetupPageNotice } from "@/components/ui/db-setup-page-notice";
 import { DemoDataToggle } from "@/components/ui/demo-data-toggle";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
@@ -51,7 +51,7 @@ export default async function TargetsPage({ searchParams }: TargetsPageProps) {
           title="타깃 업체"
           description="프로젝트별 타깃 업체 목록과 등급·상태를 관리합니다."
         />
-        <DbSetupAlert />
+        <DbSetupPageNotice resource="타깃 목록" />
       </div>
     );
   }

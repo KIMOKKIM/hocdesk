@@ -16,7 +16,12 @@
     "setup": "npm run db:generate && npm run db:push && npm run db:seed",
     "db:seed:prod": "ALLOW_PRODUCTION_SEED=true NODE_ENV=production tsx prisma/seed.ts",
     "turso:test": "tsx scripts/test-turso-connection.ts",
+    "turso:schema": "tsx scripts/push-schema-to-turso.ts",
+    "turso:schema:apply": "tsx scripts/push-schema-to-turso.ts --apply",
     "turso:seed": "tsx scripts/seed-turso.ts",
+    "turso:seed:apply": "tsx scripts/seed-turso.ts --apply",
+    "turso:check": "tsx scripts/check-turso-schema.ts",
+    "turso:setup": "npm run turso:schema:apply && npm run turso:seed:apply && npm run turso:check",
     "check:secrets": "tsx scripts/check-secrets.ts",
     "verify:deployment": "tsx scripts/verify-deployment.ts"
   },

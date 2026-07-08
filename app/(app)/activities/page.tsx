@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DbSetupAlert } from "@/components/ui/db-setup-alert";
+import { DbSetupPageNotice } from "@/components/ui/db-setup-page-notice";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { loadPageData } from "@/lib/db/errors";
@@ -24,7 +24,7 @@ export default async function ActivitiesPage() {
           title="일일 활동"
           description="담당자별 일일 업무 기록과 AI 분석 결과를 확인합니다."
         />
-        <DbSetupAlert />
+        <DbSetupPageNotice resource="활동 목록" />
       </div>
     );
   }

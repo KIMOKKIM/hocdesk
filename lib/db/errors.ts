@@ -15,12 +15,6 @@ export const DB_SETUP_COMMANDS = [
   "npx prisma db seed",
 ] as const;
 
-export const TURSO_SETUP_COMMANDS = [
-  "npx tsx scripts/push-schema-to-turso.ts --apply",
-  "npx tsx scripts/seed-turso.ts --apply",
-  "npm run turso:test",
-] as const;
-
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;

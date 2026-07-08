@@ -1,38 +1,93 @@
 #!/usr/bin/env npx tsx
 /**
- * Turso 연결 테스트
- * npx tsx scripts/test-turso-connection.ts
+ * Turso 연결 및 readiness 테스트
+ * npm run turso:test
  */
 import "dotenv/config";
 import { createTursoPrismaClient } from "../lib/db/create-turso-client";
+import { assessDatabaseReadiness, checkTursoTables } from "../lib/db/readiness";
+import { hasTursoEnv, printTursoEnvStatus, requireTursoEnv } from "../lib/db/turso-env";
+import { OPERATIONAL_PROJECT_ID } from "../lib/seed/operational-seed";
 
-const TEST_ID = `turso_test_${Date.now()}`;
+async function printRowCounts(prisma: ReturnType<typeof createTursoPrismaClient>) {
+  const counts: Array<[string, number | string]> = [];
+
+  const safeCount = async (label: string, fn: () => Promise<number>) => {
+    try {
+      counts.push([label, await fn()]);
+    } catch {
+      counts.push([label, "N/A (table missing)"]);
+    }
+  };
+
+  await safeCount("Project", () => prisma.project.count());
+  await safeCount("Company", () => prisma.company.count());
+  await safeCount("AppSetting", () => prisma.appSetting.count());
+  await safeCount("Outreach", () => prisma.outreach.count());
+
+  console.log("\n=== Row counts ===");
+  for (const [label, value] of counts) {
+    console.log(`${label}: ${value}`);
+  }
+}
 
 async function main() {
-  if (!process.env.TURSO_DATABASE_URL?.trim() || !process.env.TURSO_AUTH_TOKEN?.trim()) {
+  printTursoEnvStatus();
+
+  if (!hasTursoEnv()) {
     console.log("SKIP: TURSO_DATABASE_URL / TURSO_AUTH_TOKEN 없음 — Turso 실연결 미검증");
     return;
   }
+
+  requireTursoEnv();
+  process.env.DATABASE_PROVIDER = "turso";
 
   const prisma = createTursoPrismaClient();
   try {
     await prisma.$queryRaw`SELECT 1`;
     console.log("✓ 연결 성공");
 
-    const projectCount = await prisma.project.count();
-    console.log(`✓ project count: ${projectCount}`);
+    const readiness = await assessDatabaseReadiness(prisma);
+    const tableChecks = await checkTursoTables(prisma);
+    const missing = Object.entries(tableChecks)
+      .filter(([, ok]) => !ok)
+      .map(([key]) => key);
 
-    await prisma.$transaction(async (tx) => {
-      await tx.appSetting.upsert({
-        where: { key: TEST_ID },
-        update: { value: { ok: true, at: new Date().toISOString() } },
-        create: { key: TEST_ID, value: { ok: true } },
+    console.log("\n=== Readiness ===");
+    console.log(`database: ${readiness.database}`);
+    console.log(`schemaReady: ${readiness.schemaReady}`);
+    console.log(`seedReady: ${readiness.seedReady}`);
+    console.log(`projectTable: ${readiness.checks.projectTable}`);
+    console.log(`companyTable: ${readiness.checks.companyTable}`);
+    console.log(`appSettingTable: ${readiness.checks.appSettingTable}`);
+    console.log(`jinwoongProject: ${readiness.checks.jinwoongProject}`);
+
+    if (readiness.setupStep) {
+      console.log(`setupStep: ${readiness.setupStep}`);
+    }
+
+    if (missing.length > 0) {
+      console.log(`missing tables: ${missing.join(", ")}`);
+    }
+
+    await printRowCounts(prisma);
+
+    if (readiness.checks.jinwoongProject) {
+      const project = await prisma.project.findFirst({
+        where: {
+          OR: [
+            { id: OPERATIONAL_PROJECT_ID },
+            { name: { contains: "진웅산업" } },
+          ],
+        },
+        select: { id: true, name: true },
       });
-    });
-    console.log("✓ transaction + Json upsert");
-
-    await prisma.appSetting.delete({ where: { key: TEST_ID } }).catch(() => undefined);
-    console.log("✓ test record cleaned");
+      console.log(`\n✓ 진웅산업 프로젝트: ${project?.name ?? "(found)"}`);
+    } else if (readiness.schemaReady) {
+      console.log("\n! schema는 있으나 진웅산업 프로젝트 seed 필요 → npm run turso:seed:apply");
+    } else {
+      console.log("\n! schema 필요 → npm run turso:schema:apply");
+    }
   } finally {
     await prisma.$disconnect();
   }

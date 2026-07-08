@@ -17,17 +17,16 @@ export default async function AppLayout({
   }
 
   const projects = await loadPageData(() => getProjectOptions());
+  const dbReady = projects !== null;
 
-  if (projects === null) {
-    return (
-      <DashboardShell projects={[]}>
-        <div className="space-y-6 p-6">
+  return (
+    <DashboardShell projects={projects ?? []} dbReady={dbReady}>
+      {!dbReady ? (
+        <div className="mb-6">
           <DbSetupAlert />
-          {children}
         </div>
-      </DashboardShell>
-    );
-  }
-
-  return <DashboardShell projects={projects}>{children}</DashboardShell>;
+      ) : null}
+      {children}
+    </DashboardShell>
+  );
 }

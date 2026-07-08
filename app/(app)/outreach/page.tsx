@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { OutreachListPanel } from "@/components/outreach/outreach-list-panel";
-import { DbSetupAlert } from "@/components/ui/db-setup-alert";
+import { DbSetupPageNotice } from "@/components/ui/db-setup-page-notice";
 import { DemoDataToggle } from "@/components/ui/demo-data-toggle";
 import { PageHeader } from "@/components/ui/page-header";
 import { loadPageData } from "@/lib/db/errors";
@@ -40,7 +40,7 @@ export default async function OutreachPage({ searchParams }: OutreachPageProps) 
           title="이메일 관리"
           description="이메일 초안 작성, 승인, 발송 현황을 관리합니다."
         />
-        <DbSetupAlert />
+        <DbSetupPageNotice resource="아웃리치 목록" />
       </div>
     );
   }

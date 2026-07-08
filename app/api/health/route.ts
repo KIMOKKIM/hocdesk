@@ -1,29 +1,27 @@
 import { NextResponse } from "next/server";
 import { APP_VERSION, BASE_PATH } from "@/lib/config";
+import { isProductionEnvironment } from "@/lib/db/database-provider";
 import {
-  getDatabaseProviderLabel,
-  isProductionEnvironment,
-  resolveDatabaseProvider,
-} from "@/lib/db/database-provider";
-import { prisma } from "@/lib/prisma";
+  assessDatabaseReadiness,
+  resolveHealthStatus,
+} from "@/lib/db/readiness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  let databaseProvider: string;
-  try {
-    databaseProvider = resolveDatabaseProvider();
-  } catch {
-    databaseProvider = "invalid";
-  }
+  const readiness = await assessDatabaseReadiness();
+  const status = resolveHealthStatus(readiness);
 
-  if (isProductionEnvironment() && databaseProvider === "sqlite") {
+  if (isProductionEnvironment() && readiness.databaseProvider === "sqlite") {
     return NextResponse.json(
       {
         status: "error",
         database: "invalid-production-provider",
         databaseProvider: "sqlite",
+        schemaReady: false,
+        seedReady: false,
+        checks: readiness.checks,
         appVersion: APP_VERSION,
         basePath: BASE_PATH,
         environment: process.env.NODE_ENV ?? "production",
@@ -33,39 +31,34 @@ export async function GET() {
     );
   }
 
-  let database: "connected" | "error" | "missing-credentials" = "connected";
-  try {
-    if (databaseProvider === "turso") {
-      if (!process.env.TURSO_DATABASE_URL?.trim() || !process.env.TURSO_AUTH_TOKEN?.trim()) {
-        database = "missing-credentials";
-        throw new Error("Turso credentials are not configured");
-      }
-    }
-    await prisma.$queryRaw`SELECT 1`;
-  } catch {
-    if (database !== "missing-credentials") {
-      database = "error";
-    }
-  }
-
-  const status =
-    database === "connected" ? "ok" : database === "missing-credentials" ? "error" : "degraded";
+  const httpStatus =
+    status === "ok" ? 200 : status === "setup_required" ? 503 : 503;
 
   return NextResponse.json(
     {
       status,
-      database,
-      databaseProvider: getDatabaseProviderLabel(),
+      database: readiness.database,
+      databaseProvider: readiness.databaseProvider,
+      schemaReady: readiness.schemaReady,
+      seedReady: readiness.seedReady,
+      ...(readiness.setupStep ? { setupStep: readiness.setupStep } : {}),
+      checks: readiness.checks,
       appVersion: APP_VERSION,
       basePath: BASE_PATH,
       environment: process.env.NODE_ENV ?? "development",
       timestamp: new Date().toISOString(),
-      ...(database === "missing-credentials"
+      ...(readiness.database === "missing-credentials"
         ? {
             hint: "Vercel에 TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, DATABASE_PROVIDER=turso를 설정하세요.",
           }
         : {}),
+      ...(status === "setup_required" && readiness.setupStep === "schema"
+        ? { hint: "npm run turso:schema:apply 실행 후 npm run turso:check로 확인하세요." }
+        : {}),
+      ...(status === "setup_required" && readiness.setupStep === "seed"
+        ? { hint: "npm run turso:seed:apply 실행 후 npm run turso:check로 확인하세요." }
+        : {}),
     },
-    { status: status === "ok" ? 200 : 503 },
+    { status: httpStatus },
   );
 }

@@ -17,10 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { projectOptions } from "@/lib/sample-data";
 
 type AppHeaderProps = {
   projects?: { value: string; label: string }[];
+  dbReady?: boolean;
 };
 
 function formatTodayDate() {
@@ -32,8 +32,15 @@ function formatTodayDate() {
   }).format(new Date());
 }
 
-export function AppHeader({ projects = [] }: AppHeaderProps) {
-  const options = projects.length > 0 ? projects : projectOptions;
+function projectSelectorLabel(projects: { label: string }[], dbReady: boolean) {
+  if (!dbReady) return "DB 초기화 필요";
+  if (projects.length === 0) return "프로젝트 없음";
+  return "프로젝트 선택";
+}
+
+export function AppHeader({ projects = [], dbReady = true }: AppHeaderProps) {
+  const placeholder = projectSelectorLabel(projects, dbReady);
+  const hasProjects = dbReady && projects.length > 0;
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b bg-card px-6">
@@ -42,17 +49,22 @@ export function AppHeader({ projects = [] }: AppHeaderProps) {
           <span className="text-sm font-medium text-muted-foreground">
             현재 프로젝트
           </span>
-          <Select defaultValue={options[0]?.value}>
+          <Select
+            disabled={!hasProjects}
+            defaultValue={hasProjects ? projects[0]?.value : undefined}
+          >
             <SelectTrigger className="w-[280px]">
-              <SelectValue placeholder="프로젝트 선택" />
+              <SelectValue placeholder={placeholder} />
             </SelectTrigger>
-            <SelectContent>
-              {options.map((project) => (
-                <SelectItem key={project.value} value={project.value}>
-                  {project.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
+            {hasProjects ? (
+              <SelectContent>
+                {projects.map((project) => (
+                  <SelectItem key={project.value} value={project.value}>
+                    {project.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            ) : null}
           </Select>
         </div>
       </div>

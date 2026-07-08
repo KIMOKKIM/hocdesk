@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { SettingsForm } from "@/components/settings/settings-form";
-import { DbSetupAlert } from "@/components/ui/db-setup-alert";
+import { DbSetupPageNotice } from "@/components/ui/db-setup-page-notice";
 import { PageHeader } from "@/components/ui/page-header";
 import { loadPageData } from "@/lib/db/errors";
 import { getSearchProviderStatus } from "@/lib/db/search-provider-status";
@@ -26,7 +26,7 @@ export default async function SettingsPage() {
           title="설정"
           description="발신자 프로필과 수신거부 목록을 관리합니다."
         />
-        <DbSetupAlert />
+        <DbSetupPageNotice resource="설정" />
       </div>
     );
   }

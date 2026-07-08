@@ -3,9 +3,10 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DbSetupAlert } from "@/components/ui/db-setup-alert";
+import { DbSetupPageNotice } from "@/components/ui/db-setup-page-notice";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
+import { isProductionEnvironment } from "@/lib/db/database-provider";
 import { loadPageData } from "@/lib/db/errors";
 import { getProjects } from "@/lib/db/projects";
 import { Plus } from "lucide-react";
@@ -24,7 +25,7 @@ export default async function ProjectsPage() {
           title="매각 프로젝트"
           description="진행 중인 매각·Exit 프로젝트를 관리합니다."
         />
-        <DbSetupAlert />
+        <DbSetupPageNotice resource="프로젝트 목록" />
       </div>
     );
   }
@@ -45,7 +46,11 @@ export default async function ProjectsPage() {
       {projects.length === 0 ? (
         <EmptyState
           title="등록된 프로젝트가 없습니다"
-          description="시드 데이터를 실행하거나 새 매각 프로젝트를 등록하세요."
+          description={
+            isProductionEnvironment()
+              ? "진웅산업 seed가 필요한 경우 npm run turso:seed:apply 를 실행하세요."
+              : "시드 데이터를 실행하거나 새 매각 프로젝트를 등록하세요."
+          }
           actionLabel="프로젝트 등록"
         />
       ) : (
