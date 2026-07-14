@@ -4,43 +4,35 @@
  * npm run turso:schema
  * npm run turso:schema:apply
  */
-import { spawnSync } from "node:child_process";
 import "dotenv/config";
 import { printTursoEnvStatus, requireTursoEnv } from "../lib/db/turso-env";
+import { applyTursoSchema } from "../lib/turso/setup-schema";
 
 const apply = process.argv.includes("--apply");
 
-function main() {
+async function main() {
   printTursoEnvStatus();
   requireTursoEnv();
 
   console.log(`\nTurso schema push (${apply ? "APPLY" : "DRY-RUN"})`);
-  console.log("기존 테이블은 삭제하지 않습니다 (prisma db push).");
+  console.log("기존 테이블은 삭제하지 않습니다 (CREATE IF NOT EXISTS).");
 
   if (!apply) {
-    console.log("\n실행 예정: DATABASE_PROVIDER=turso npx prisma db push");
+    console.log("\n실행 예정: lib/turso/setup-schema applyTursoSchema()");
     console.log("적용하려면: npm run turso:schema:apply");
     return;
   }
 
-  const result = spawnSync(
-    process.platform === "win32" ? "npx.cmd" : "npx",
-    ["prisma", "db", "push"],
-    {
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        DATABASE_PROVIDER: "turso",
-      },
-    },
-  );
-
-  if ((result.status ?? 1) !== 0) {
-    console.error("\n✗ schema push 실패 — 위 Prisma 오류 메시지에서 테이블/필드를 확인하세요.");
-    process.exit(result.status ?? 1);
-  }
-
-  console.log("\n✓ schema push 완료 — npm run turso:check 로 확인하세요.");
+  process.env.DATABASE_PROVIDER = "turso";
+  const result = await applyTursoSchema();
+  console.log(`\n✓ schema 적용 완료 (${result.statementCount} statements)`);
+  console.log("다음: npm run turso:check");
 }
 
-main();
+main().catch((error) => {
+  console.error(
+    "push-schema-to-turso failed:",
+    error instanceof Error ? error.message : error,
+  );
+  process.exit(1);
+});

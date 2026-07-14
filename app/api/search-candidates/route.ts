@@ -1,4 +1,4 @@
-import { requireAdminAccess } from "@/lib/api/auth";
+import { requireAdmin } from "@/lib/api/auth";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { importDiscoveredCandidates } from "@/lib/collection/candidate-import";
 import {
@@ -15,7 +15,7 @@ const importSchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const url = new URL(request.url);
     const items = await getDiscoveredCandidates({
       projectId: url.searchParams.get("projectId") ?? undefined,
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const raw = await request.json();
     const action = raw.action as string;
 

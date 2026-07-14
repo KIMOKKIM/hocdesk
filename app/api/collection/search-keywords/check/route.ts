@@ -1,4 +1,4 @@
-import { requireAdminAccess } from "@/lib/api/auth";
+import { requireAdmin } from "@/lib/api/auth";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { getRecentSearchKeywordWarnings } from "@/lib/collection/search-keyword-warnings";
 import { z } from "zod";
@@ -9,7 +9,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const body = schema.parse(await request.json());
     const warnings = await getRecentSearchKeywordWarnings(body.queries);
     return jsonOk({ warnings });

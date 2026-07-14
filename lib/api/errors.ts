@@ -6,6 +6,10 @@ const SENSITIVE_PATTERNS = [
   /Bearer\s+\S+/i,
   /ENCRYPTION_KEY/i,
   /CRON_SECRET/i,
+  /SESSION_SECRET/i,
+  /ADMIN_PASSWORD/i,
+  /TURSO_AUTH_TOKEN/i,
+  /tb_admin_session=/i,
 ];
 
 export class ApiError extends Error {

@@ -6,26 +6,11 @@
  * npm run turso:seed:apply -- --include-demo
  */
 import "dotenv/config";
-import { createTursoPrismaClient } from "../lib/db/create-turso-client";
-import { assessDatabaseReadiness } from "../lib/db/readiness";
 import { printTursoEnvStatus, requireTursoEnv } from "../lib/db/turso-env";
-import { seedOperationalProject } from "../lib/seed/operational-seed";
+import { seedTursoProduction } from "../lib/turso/seed-production";
 
 const apply = process.argv.includes("--apply");
 const includeDemo = process.argv.includes("--include-demo");
-
-async function printCounts(prisma: ReturnType<typeof createTursoPrismaClient>) {
-  const [projectCount, appSettingCount, companyCount] = await Promise.all([
-    prisma.project.count(),
-    prisma.appSetting.count(),
-    prisma.company.count(),
-  ]);
-
-  console.log("\n=== Seed counts ===");
-  console.log(`Project: ${projectCount}`);
-  console.log(`AppSetting: ${appSettingCount}`);
-  console.log(`Company: ${companyCount}`);
-}
 
 async function main() {
   printTursoEnvStatus();
@@ -41,33 +26,16 @@ async function main() {
     return;
   }
 
-  process.env.DATABASE_PROVIDER = "turso";
-  const prisma = createTursoPrismaClient();
-  try {
-    const before = await assessDatabaseReadiness(prisma);
-    if (!before.schemaReady) {
-      console.error("\n✗ schema가 없습니다. 먼저 npm run turso:schema:apply 를 실행하세요.");
-      process.exit(1);
-    }
-
-    await seedOperationalProject(prisma);
-
-    if (includeDemo) {
-      console.log("데모 업체 seed는 prisma/seed.ts 전체 실행으로 별도 처리하세요.");
-    }
-
-    await printCounts(prisma);
-
-    const after = await assessDatabaseReadiness(prisma);
-    if (after.seedReady) {
-      console.log("\n✓ Turso operational seed 완료 — 진웅산업 프로젝트 준비됨");
-    } else {
-      console.log("\n! seed 후에도 진웅산업 프로젝트를 찾지 못했습니다.");
-      process.exit(1);
-    }
-  } finally {
-    await prisma.$disconnect();
+  if (includeDemo) {
+    console.log("데모 업체 seed는 prisma/seed.ts 전체 실행으로 별도 처리하세요.");
   }
+
+  const result = await seedTursoProduction();
+  console.log("\n=== Seed counts ===");
+  console.log(`Project: ${result.counts.projects}`);
+  console.log(`AppSetting: ${result.counts.appSettings}`);
+  console.log(`Company: ${result.counts.companies}`);
+  console.log("\n✓ Turso operational seed 완료 — 진웅산업 프로젝트 준비됨");
 }
 
 main().catch((error) => {

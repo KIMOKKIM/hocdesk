@@ -33,7 +33,9 @@ Vercel Dashboard → Project → Settings → Environment Variables
 | `DATABASE_PROVIDER` | `turso` | 운영 필수 |
 | `TURSO_DATABASE_URL` | *(Turso libsql URL)* | 비밀 |
 | `TURSO_AUTH_TOKEN` | *(Turso auth token)* | 비밀 |
-| `ADMIN_ACCESS_KEY` | *(강력한 랜덤 문자열)* | 쓰기 API·로그인 |
+| `ADMIN_USERNAME` | `<관리자 아이디>` | 로그인 ID |
+| `ADMIN_PASSWORD` | `<관리자 비밀번호>` | 로그인 PW (`$` 포함 시 로컬 `.env`는 따옴표로 감쌈) |
+| `SESSION_SECRET` | *(긴 랜덤 문자열)* | 세션 HMAC 서명 |
 | `TARGET_SEARCH_PROVIDER` | `kakao` | Kakao 검색 |
 | `KAKAO_REST_API_KEY` | *(Kakao REST API 키)* | 비밀 |
 | `AI_PROVIDER` | `rules` | 규칙 기반 분석 |
@@ -47,7 +49,9 @@ NEXT_PUBLIC_BASE_PATH=/Jinwoong
 DATABASE_PROVIDER=turso
 TURSO_DATABASE_URL=
 TURSO_AUTH_TOKEN=
-ADMIN_ACCESS_KEY=
+ADMIN_USERNAME=
+ADMIN_PASSWORD=
+SESSION_SECRET=
 TARGET_SEARCH_PROVIDER=kakao
 KAKAO_REST_API_KEY=
 AI_PROVIDER=rules
@@ -55,27 +59,30 @@ EMAIL_PROVIDER=console
 INCLUDE_DEMO_DATA=false
 ```
 
-- `TURSO_*`, `ADMIN_ACCESS_KEY`, `KAKAO_REST_API_KEY`는 **런타임**에 검증됩니다. 빌드 단계에서 미설정이어도 `next build`는 통과합니다.
+- `TURSO_*`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `KAKAO_REST_API_KEY`는 **런타임**에 검증됩니다. 빌드 단계에서 미설정이어도 `next build`는 통과합니다.
 - 비밀키에 `NEXT_PUBLIC_` 접두사를 붙이지 마세요.
 - `.env`, `dev.db`, 실제 키는 Git에 포함하지 마세요.
+- `ADMIN_ACCESS_KEY`는 **deprecated**입니다. 로그인 UI에서는 사용하지 않습니다. (선택) 자동화 Bearer용으로만 남을 수 있습니다.
+- Vercel Environment Variables UI에서는 비밀번호 값을 따옴표·백슬래시 없이 그대로 입력합니다.
+- 로컬 `.env`에서 비밀번호에 `$`가 포함되면 Next.js 환경변수 확장을 피하기 위해 각 `$`를 `\$`로 이스케이프하세요.
+  예: `ADMIN_PASSWORD="prefix\$\$suffix"`
 
 ---
 
 ## 3. 운영 DB 최초 초기화 (Turso)
 
-Vercel 배포 후 `/api/health`가 `setup_required`이면 아래 순서를 따릅니다.
+Vercel 배포 후 `/api/health`가 `setup_required`이면 아래 중 하나를 따릅니다.
 
-### 3-1. Vercel 환경변수 설정
+### 3-A. 대시보드에서 초기화 (권장)
 
-섹션 2의 `DATABASE_PROVIDER`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`을 설정합니다.
+1. `https://hocdesk.pe.kr/Jinwoong/login` 에서 관리자 ID/PW로 로그인
+2. 대시보드의 **운영 DB 초기화 실행** 버튼 클릭
+3. 확인 체크 후 초기화 실행
+4. `/api/health`가 `status: "ok"`인지 확인
 
-### 3-2. 로컬 `.env`에 같은 Turso 값 설정
+### 3-B. 로컬 CLI
 
-로컬 `.env`의 Turso URL/토큰이 **Vercel과 동일한 DB**를 가리켜야 schema/seed가 운영 DB에 반영됩니다.
-
-> `dev.db`(SQLite)는 Vercel 운영 DB가 **아닙니다**.
-
-### 3-3. 초기화 명령 (로컬 PowerShell/터미널)
+로컬 `.env`의 Turso URL/토큰이 **Vercel과 동일한 DB**를 가리켜야 합니다.
 
 ```bash
 npm run turso:test
@@ -90,11 +97,7 @@ npm run turso:check
 npm run turso:setup
 ```
 
-### 3-4. Vercel Redeploy
-
-환경변수 변경 후 Vercel에서 재배포합니다.
-
-### 3-5. 확인
+### 확인
 
 ```
 https://hocdesk.pe.kr/Jinwoong/api/health
@@ -117,8 +120,9 @@ https://hocdesk.pe.kr/Jinwoong/dashboard
 ### 주의
 
 - Turso seed는 **반복 실행 가능** (upsert, 중복 생성 없음)
-- `--include-demo` 없이는 **데모 업체가 들어가지 않음**
+- 데모 업체는 운영 기본 seed에 넣지 않음
 - 비밀키는 Git에 커밋하지 않음
+- 초기화 API(`POST /api/admin/turso/setup`)는 로그인한 관리자만 실행 가능
 
 ---
 
@@ -127,8 +131,8 @@ https://hocdesk.pe.kr/Jinwoong/dashboard
 | 명령 | 설명 |
 |------|------|
 | `npm run turso:test` | 연결 + readiness + row count |
-| `npm run turso:schema` | schema push dry-run |
-| `npm run turso:schema:apply` | schema push 적용 |
+| `npm run turso:schema` | schema dry-run |
+| `npm run turso:schema:apply` | schema 적용 (idempotent DDL) |
 | `npm run turso:seed` | seed dry-run |
 | `npm run turso:seed:apply` | 진웅산업 + AppSetting seed |
 | `npm run turso:check` | 테이블/seed 점검 |
@@ -140,11 +144,12 @@ https://hocdesk.pe.kr/Jinwoong/dashboard
 
 ## 5. 관리자 보호
 
-운영 환경에서 `ADMIN_ACCESS_KEY` 미설정 시 **쓰기 API가 비활성화**됩니다.
+운영 환경에서 `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `SESSION_SECRET` 미설정 시 **로그인·쓰기 API가 비활성화**됩니다.
 
-- 로그인: `/Jinwoong/login`
-- HttpOnly 쿠키 세션 (Secure/SameSite=Lax)
-- URL query/localStorage에 키 저장하지 않음
+- 로그인: `/Jinwoong/login` (아이디/비밀번호)
+- 쿠키: `tb_admin_session` (HttpOnly, Secure in production, SameSite=Lax, 8시간)
+- URL query/localStorage에 비밀번호 저장하지 않음
+- 로그아웃: 상단 사용자 메뉴 → 로그아웃
 
 ---
 
@@ -182,6 +187,7 @@ https://hocdesk.pe.kr/Jinwoong/dashboard
 
 ```bash
 cp .env.example .env
+# ADMIN_USERNAME / ADMIN_PASSWORD / SESSION_SECRET 설정
 npm install
 npm run db:push
 npm run db:seed
@@ -206,11 +212,10 @@ BASE_URL=http://localhost:3000/Jinwoong npm run verify:deployment
 ## 9. Vercel에서 사용자가 설정할 항목
 
 1. Git 연결 및 Deploy
-2. 환경변수 (섹션 2)
-3. Turso DB 생성 및 schema/seed
-4. `ADMIN_ACCESS_KEY` 설정
-5. 도메인 시나리오 A 또는 B 선택
-6. (선택) Kakao API 키 설정 후 Settings 연결 테스트
+2. 환경변수 (섹션 2) — 특히 `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SESSION_SECRET`
+3. Turso DB 생성 후 대시보드 초기화 또는 `turso:setup`
+4. 도메인 시나리오 A 또는 B 선택
+5. (선택) Kakao API 키 설정 후 Settings 연결 테스트
 
 ---
 

@@ -1,4 +1,4 @@
-import { requireAdminAccess } from "@/lib/api/auth";
+import { requireAdmin } from "@/lib/api/auth";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { generateOutreachSchema, parseJsonBody } from "@/lib/api/validation";
 import { generateOutreachDraft } from "@/lib/email/outreach-service";
@@ -6,7 +6,7 @@ import type { IndustryTemplateKey } from "@/lib/constants/email";
 
 export async function POST(request: Request) {
   try {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const body = await parseJsonBody(request, generateOutreachSchema);
     const result = await generateOutreachDraft({
       projectCompanyId: body.projectCompanyId,

@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { requireAdminAccess } from "@/lib/api/auth";
+import { requireAdmin } from "@/lib/api/auth";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rate-limit";
 import { parseJsonBody } from "@/lib/api/validation";
@@ -23,7 +23,7 @@ export function createApiHandler<TBody = undefined, TResult = unknown>(
   return async (request: Request, context: HandlerContext) => {
     try {
       if (options.admin) {
-        requireAdminAccess(request);
+        await requireAdmin(request);
       }
       if (options.rateLimit) {
         checkRateLimit(request, options.rateLimit);

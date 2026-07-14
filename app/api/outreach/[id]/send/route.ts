@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdminAccess } from "@/lib/api/auth";
+import { requireAdmin } from "@/lib/api/auth";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rate-limit";
 import {
@@ -21,7 +21,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
 export async function POST(request: Request, context: RouteContext) {
   try {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     checkRateLimit(request, "outreach-send:POST");
     const { id } = await context.params;
     const outreach = await sendOutreach(id);

@@ -1,6 +1,8 @@
 "use client";
 
 import { Bell, ChevronDown } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { withBasePath } from "@/lib/paths";
 
 type AppHeaderProps = {
   projects?: { value: string; label: string }[];
@@ -39,8 +42,22 @@ function projectSelectorLabel(projects: { label: string }[], dbReady: boolean) {
 }
 
 export function AppHeader({ projects = [], dbReady = true }: AppHeaderProps) {
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
   const placeholder = projectSelectorLabel(projects, dbReady);
   const hasProjects = dbReady && projects.length > 0;
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch(withBasePath("/api/auth/logout"), { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b bg-card px-6">
@@ -100,7 +117,9 @@ export function AppHeader({ projects = [], dbReady = true }: AppHeaderProps) {
           <DropdownMenuContent align="end">
             <DropdownMenuItem>내 프로필</DropdownMenuItem>
             <DropdownMenuItem>알림 설정</DropdownMenuItem>
-            <DropdownMenuItem>로그아웃</DropdownMenuItem>
+            <DropdownMenuItem disabled={loggingOut} onClick={() => void handleLogout()}>
+              {loggingOut ? "로그아웃 중..." : "로그아웃"}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

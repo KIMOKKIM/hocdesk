@@ -1,59 +1,56 @@
 import "server-only";
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { BASE_PATH } from "@/lib/config";
+import {
+  ADMIN_COOKIE_NAME,
+  SESSION_TTL_MS,
+  createAdminSessionToken,
+  parseCookieValue,
+  resolveSessionSecret,
+  verifyAdminSessionToken,
+  type AdminSessionPayload,
+} from "@/lib/auth/session-token";
 
-export const ADMIN_COOKIE_NAME = "tb_admin";
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export {
+  ADMIN_COOKIE_NAME,
+  SESSION_TTL_MS,
+  createAdminSessionToken,
+  verifyAdminSessionToken,
+  resolveSessionSecret,
+};
+export type { AdminSessionPayload };
 
-function getAdminAccessKey(): string | null {
-  const key = process.env.ADMIN_ACCESS_KEY?.trim();
-  return key || null;
+export function getAdminCredentials(): {
+  username: string;
+  password: string;
+} | null {
+  const username = process.env.ADMIN_USERNAME?.trim();
+  const password = process.env.ADMIN_PASSWORD;
+  if (!username || password === undefined || password === "") {
+    return null;
+  }
+  return { username, password };
 }
 
 export function isAdminProtectionEnabled(): boolean {
   if (process.env.NODE_ENV !== "production") {
-    return Boolean(getAdminAccessKey());
+    return Boolean(getAdminCredentials());
   }
   return true;
 }
 
 export function isWriteApiEnabled(): boolean {
   if (process.env.NODE_ENV !== "production") return true;
-  return Boolean(getAdminAccessKey());
+  return Boolean(getAdminCredentials() && process.env.SESSION_SECRET?.trim());
 }
 
-function signPayload(payload: string, secret: string): string {
-  return createHmac("sha256", secret).update(payload).digest("hex");
-}
-
-export function createAdminSessionToken(): string {
-  const secret = getAdminAccessKey();
-  if (!secret) {
-    throw new Error("ADMIN_ACCESS_KEY가 설정되지 않았습니다.");
+export function timingSafeStringEqual(a: string, b: string): boolean {
+  const max = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < max; i++) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
   }
-  const expiresAt = Date.now() + SESSION_TTL_MS;
-  const payload = String(expiresAt);
-  return `${payload}.${signPayload(payload, secret)}`;
-}
-
-export function verifyAdminSessionToken(token: string | undefined | null): boolean {
-  if (!token) return false;
-  const secret = getAdminAccessKey();
-  if (!secret) return false;
-
-  const [payload, signature] = token.split(".");
-  if (!payload || !signature) return false;
-
-  const expiresAt = Number(payload);
-  if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) return false;
-
-  const expected = signPayload(payload, secret);
-  try {
-    return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
-  } catch {
-    return false;
-  }
+  return a.length === b.length && diff === 0;
 }
 
 export async function isAdminAuthenticated(): Promise<boolean> {
@@ -61,6 +58,16 @@ export async function isAdminAuthenticated(): Promise<boolean> {
     return true;
   }
 
+  const cookieStore = await cookies();
+  const token = cookieStore.get(ADMIN_COOKIE_NAME)?.value;
+  const payload = await verifyAdminSessionToken(token);
+  return payload !== null;
+}
+
+export async function getAdminSession(): Promise<AdminSessionPayload | null> {
+  if (!isAdminProtectionEnabled()) {
+    return { u: "dev", exp: Date.now() + SESSION_TTL_MS };
+  }
   const cookieStore = await cookies();
   return verifyAdminSessionToken(cookieStore.get(ADMIN_COOKIE_NAME)?.value);
 }
@@ -75,14 +82,12 @@ export function getAdminSessionCookieOptions() {
   };
 }
 
-export function parseAdminSessionFromRequest(request: Request): boolean {
-  const header = request.headers.get("cookie");
-  if (!header) return false;
-  const match = header
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${ADMIN_COOKIE_NAME}=`));
-  if (!match) return false;
-  const token = decodeURIComponent(match.slice(ADMIN_COOKIE_NAME.length + 1));
+export async function parseAdminSessionFromRequest(
+  request: Request,
+): Promise<AdminSessionPayload | null> {
+  const token = parseCookieValue(
+    request.headers.get("cookie"),
+    ADMIN_COOKIE_NAME,
+  );
   return verifyAdminSessionToken(token);
 }

@@ -1,10 +1,10 @@
-import { requireAdminAccess } from "@/lib/api/auth";
+import { requireAdmin } from "@/lib/api/auth";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { getActivityLogs } from "@/lib/audit/activity-log-service";
 
 export async function GET(request: Request) {
   try {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const url = new URL(request.url);
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");

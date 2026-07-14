@@ -1,4 +1,4 @@
-import { requireAdminAccess } from "@/lib/api/auth";
+import { requireAdmin } from "@/lib/api/auth";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import {
   senderProfileSchema,
@@ -27,7 +27,7 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const body = await parseJsonBody(request, senderProfileSchema);
     await saveSenderProfile(body);
     return jsonOk({ senderProfile: body });
@@ -38,7 +38,7 @@ export async function PATCH(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const body = await parseJsonBody(request, suppressionSchema);
     const entry = await addToSuppressionList({
       email: body.email,
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
     if (!id) throw new Error("id가 필요합니다.");

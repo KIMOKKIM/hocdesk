@@ -1,4 +1,4 @@
-import { requireAdminAccess } from "@/lib/api/auth";
+import { requireAdmin } from "@/lib/api/auth";
 import { jsonError, jsonOk } from "@/lib/api/response";
 import { createActivitySchema, parseJsonBody } from "@/lib/api/validation";
 import { createActivity } from "@/lib/db/activities";
@@ -6,7 +6,7 @@ import { analyzeDailyActivity } from "@/lib/activities/analyze-service";
 
 export async function POST(request: Request) {
   try {
-    requireAdminAccess(request);
+    await requireAdmin(request);
     const body = await parseJsonBody(request, createActivitySchema);
     const activity = await createActivity(body);
 
