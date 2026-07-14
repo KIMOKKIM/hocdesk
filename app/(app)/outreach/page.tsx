@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { loadPageData } from "@/lib/db/errors";
 import { getOutreachList, getOutreachStats } from "@/lib/db/outreach";
 import { shouldIncludeDemo } from "@/lib/demo-filter";
+import { isProductionEnvironment } from "@/lib/db/database-provider";
 
 export const metadata: Metadata = {
   title: "이메일 관리",
@@ -21,6 +22,7 @@ export default async function OutreachPage({ searchParams }: OutreachPageProps) 
   const tab = params.tab ?? "ALL";
   const q = params.q ?? "";
   const includeDemo = shouldIncludeDemo(params.includeDemo);
+  const allowDemoToggle = !isProductionEnvironment();
 
   const pageData = await loadPageData(() =>
     Promise.all([
@@ -55,7 +57,7 @@ export default async function OutreachPage({ searchParams }: OutreachPageProps) 
       />
 
       <Suspense fallback={null}>
-        <DemoDataToggle includeDemo={includeDemo} />
+        <DemoDataToggle includeDemo={includeDemo} allowToggle={allowDemoToggle} />
       </Suspense>
 
       <Suspense fallback={<p className="text-sm text-muted-foreground">로딩 중...</p>}>

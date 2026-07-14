@@ -15,6 +15,7 @@ import {
   getTargets,
 } from "@/lib/db/targets";
 import { shouldIncludeDemo } from "@/lib/demo-filter";
+import { isProductionEnvironment } from "@/lib/db/database-provider";
 import { Plus } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -58,6 +59,7 @@ export default async function TargetsPage({ searchParams }: TargetsPageProps) {
 
   const [targets, filterOptions] = pageData;
   const includeDemo = shouldIncludeDemo(filters.includeDemo);
+  const allowDemoToggle = !isProductionEnvironment();
 
   return (
     <div className="space-y-6">
@@ -74,7 +76,7 @@ export default async function TargetsPage({ searchParams }: TargetsPageProps) {
 
       <Suspense fallback={<div className="h-32 rounded-xl border bg-muted/20" />}>
         <div className="space-y-4">
-          <DemoDataToggle includeDemo={includeDemo} />
+          <DemoDataToggle includeDemo={includeDemo} allowToggle={allowDemoToggle} />
           <TargetFilters
           industries={filterOptions.industries}
           regions={filterOptions.regions}

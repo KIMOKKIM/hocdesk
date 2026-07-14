@@ -21,6 +21,7 @@ import {
   outreachStatusLabels,
 } from "@/lib/constants/labels";
 import { shouldIncludeDemo } from "@/lib/demo-filter";
+import { isProductionEnvironment } from "@/lib/db/database-provider";
 import { formatDateTime } from "@/lib/format";
 
 export const metadata: Metadata = {
@@ -34,6 +35,7 @@ type DashboardPageProps = {
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const params = await searchParams;
   const includeDemo = shouldIncludeDemo(params.includeDemo);
+  const allowDemoToggle = !isProductionEnvironment();
 
   const pageData = await loadPageData(() =>
     Promise.all([
@@ -75,7 +77,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       />
 
       <Suspense fallback={null}>
-        <DemoDataToggle includeDemo={includeDemo} />
+        <DemoDataToggle includeDemo={includeDemo} allowToggle={allowDemoToggle} />
       </Suspense>
 
       <Card className="border-border/80 shadow-sm">

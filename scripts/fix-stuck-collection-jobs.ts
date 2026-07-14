@@ -86,8 +86,8 @@ async function main() {
         status: "FAILED",
         currentStep: "실패",
         completedAt: new Date(),
-        errorMessage: "작업 시간이 초과되어 정리되었습니다.",
-        lastMessage: "작업 시간이 초과되어 정리되었습니다.",
+        errorMessage: "이전 수집 방식의 장시간 작업이 정리되었습니다.",
+        lastMessage: "이전 수집 방식의 장시간 작업이 정리되었습니다.",
         lastProgressAt: new Date(),
       },
     });

@@ -18,6 +18,7 @@ export default async function SearchCandidatesPage({ searchParams }: Props) {
 
   const mapped = items.map((item) => ({
     ...item,
+    address: item.address ?? item.roadAddress ?? null,
     discoveredAt: formatDateTime(item.discoveredAt),
   }));
 

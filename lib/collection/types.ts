@@ -23,6 +23,8 @@ export type SearchPlan = {
   provider?: string;
   dryRun?: boolean;
   importMode?: "review" | "fast";
+  /** client-step: 클라이언트가 run-next로 검색어 단위 실행 */
+  orchestration?: "legacy" | "client-step";
   generatedQueries?: KakaoSearchQuery[];
   queryCount?: number;
   pagesRequested?: number;
@@ -137,6 +139,7 @@ export type CollectionJobStats = {
   importMode?: "review" | "fast";
   candidatesCreated?: number;
   companiesImported?: number;
+  orchestration?: string;
 };
 
 export type CollectionJobResult = {

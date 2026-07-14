@@ -349,6 +349,8 @@ function collectionStatusLabel(status: string) {
       return "취소";
     case CollectionJobStatus.CANCEL_REQUESTED:
       return "취소 요청";
+    case CollectionJobStatus.PAUSED:
+      return "일시정지";
     case CollectionJobStatus.DRY_RUN:
       return "미리보기";
     default:

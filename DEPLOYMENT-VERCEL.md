@@ -299,4 +299,10 @@ BASE_URL=http://localhost:3000/Jinwoong npm run verify:deployment
 - Gmail 실발송 미구현 (`EMAIL_PROVIDER=console`)
 - Turso 실연결은 키 설정 후에만 검증 가능
 - 실제 Vercel 배포 성공 여부는 배포 후 URL로 확인 필요
-- **타깃 수집:** `POST /collection/initial`은 job 생성 후 `after()`로 실행하고, UI는 2초 polling으로 진행상태를 표시한다. Vercel serverless 실행 시간 한도가 있으므로 `requestedCount`는 30 이하, `maxQueriesPerJob` 제한을 유지한다. 장기적으로는 전용 큐/백그라운드 워커가 필요하다.
+- **타깃 수집:** 검색어 단위 `prepare` → `run-next` 클라이언트 오케스트레이션.
+  긴 동기/백그라운드 전체 수집은 사용하지 않는다. Vercel Functions 실행시간 제한을
+  피하기 위한 MVP 방식이며, 장기적으로는 Cron/queue 도입이 가능하다.
+  - `POST /api/projects/:id/collection/prepare` — 검색 계획만 생성
+  - `POST /api/collection/jobs/:jobId/run-next` — 검색어 1개 처리
+  - 결과는 SearchCandidate(DiscoveredCandidate)에 저장 후 승인 시 타깃 등록
+

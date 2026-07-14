@@ -45,6 +45,7 @@ export const SuggestionStatus = {
 export const CollectionJobStatus = {
   QUEUED: "QUEUED",
   RUNNING: "RUNNING",
+  PAUSED: "PAUSED",
   COMPLETED: "COMPLETED",
   FAILED: "FAILED",
   CANCELLED: "CANCELLED",
