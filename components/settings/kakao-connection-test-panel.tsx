@@ -13,6 +13,7 @@ type TestResult = {
   elapsedMs: number;
   errorCode?: string;
   errorMessage?: string;
+  message?: string;
   results?: Array<{
     placeName: string;
     categoryName: string;
@@ -26,6 +27,7 @@ type TestResult = {
 
 type KakaoConnectionTestPanelProps = {
   apiKeyPresent: boolean;
+  apiKeyMasked?: string | null;
   providerLabel: string;
 };
 
@@ -33,6 +35,7 @@ const DEFAULT_QUERY = "양주 폐차장";
 
 export function KakaoConnectionTestPanel({
   apiKeyPresent,
+  apiKeyMasked = null,
   providerLabel,
 }: KakaoConnectionTestPanelProps) {
   const [query, setQuery] = useState(DEFAULT_QUERY);
@@ -43,11 +46,14 @@ export function KakaoConnectionTestPanel({
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch(withBasePath("/api/collection/providers/kakao/test"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, segmentName: "폐차장" }),
-      });
+      const res = await fetch(
+        withBasePath("/api/collection/providers/kakao/test"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query, segmentName: "폐차장" }),
+        },
+      );
       const data = await res.json();
       if (data.ok === false) {
         setResult({
@@ -56,11 +62,22 @@ export function KakaoConnectionTestPanel({
           query,
           resultCount: 0,
           elapsedMs: 0,
+          errorCode: data.code,
           errorMessage: data.error ?? "테스트 실패",
         });
         return;
       }
-      setResult(data as TestResult);
+      setResult({
+        configured: Boolean(data.configured ?? apiKeyPresent),
+        success: Boolean(data.success),
+        query: data.query ?? query,
+        resultCount: data.resultCount ?? 0,
+        elapsedMs: data.elapsedMs ?? 0,
+        errorCode: data.errorCode,
+        errorMessage: data.errorMessage ?? data.message,
+        message: data.message,
+        results: data.results,
+      });
     } catch {
       setResult({
         configured: apiKeyPresent,
@@ -84,15 +101,27 @@ export function KakaoConnectionTestPanel({
         </div>
         <div>
           <p className="text-muted-foreground">Kakao API 키</p>
-          <p className="font-medium">{apiKeyPresent ? "설정됨" : "미설정"}</p>
+          <p className="font-medium">
+            {apiKeyPresent
+              ? `설정됨${apiKeyMasked ? ` (${apiKeyMasked})` : ""}`
+              : "미설정"}
+          </p>
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        KAKAO_REST_API_KEY와 TARGET_SEARCH_PROVIDER=kakao를 .env에 설정한 후{" "}
-        <strong>개발 서버를 반드시 재시작</strong>해야 합니다. API 키는 화면에
-        표시되지 않습니다.
-      </p>
+      {!apiKeyPresent ? (
+        <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          API 키 설정 후 Redeploy가 필요합니다. 변수명은{" "}
+          <code className="rounded bg-muted px-1">KAKAO_REST_API_KEY</code>{" "}
+          이며 <code className="rounded bg-muted px-1">NEXT_PUBLIC_</code>{" "}
+          접두사를 붙이면 안 됩니다.
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          연결 테스트는 Kakao Local API를 1회 호출합니다. DB는 변경하지 않으며
+          API 키 원문은 표시되지 않습니다.
+        </p>
+      )}
 
       <div className="space-y-2">
         <label htmlFor="kakaoTestQuery" className="text-sm font-medium">
@@ -100,20 +129,31 @@ export function KakaoConnectionTestPanel({
         </label>
         <input
           id="kakaoTestQuery"
-          className="flex h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+          className="flex h-9 w-full rounded-lg border border-input bg-background px-3 text-sm disabled:opacity-60"
           value={query}
+          disabled={!apiKeyPresent || loading}
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
 
       <div>
-        <Button size="sm" disabled={loading} onClick={runTest}>
+        <Button
+          size="sm"
+          disabled={!apiKeyPresent || loading || !query.trim()}
+          onClick={() => void runTest()}
+        >
           {loading ? "테스트 중..." : "연결 테스트"}
         </Button>
-        <p className="mt-2 text-xs text-muted-foreground">
-          API 연결과 검색결과를 확인합니다. 이 테스트는 업체 DB를 변경하지
-          않습니다.
-        </p>
+        {!apiKeyPresent ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            API 키 설정 후 Redeploy가 필요합니다.
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-muted-foreground">
+            API 연결과 검색결과를 확인합니다. 이 테스트는 업체 DB를 변경하지
+            않습니다.
+          </p>
+        )}
       </div>
 
       {result ? (
@@ -132,10 +172,21 @@ export function KakaoConnectionTestPanel({
           {result.errorMessage ? (
             <p className="text-destructive">{result.errorMessage}</p>
           ) : null}
+          {result.success ? (
+            <p className="text-muted-foreground">
+              {result.message ?? "DB 변경 없음"}
+            </p>
+          ) : null}
+          {!result.success && result.errorCode === "API_KEY_MISSING" ? (
+            <p className="text-xs text-muted-foreground">
+              Vercel Dashboard → Settings → Environment Variables에서 Production
+              환경에 KAKAO_REST_API_KEY를 추가한 뒤 Redeploy하세요.
+            </p>
+          ) : null}
           {result.results && result.results.length > 0 ? (
             <ul className="divide-y">
               {result.results.map((item) => (
-                <li key={item.placeName} className="py-2">
+                <li key={`${item.placeName}-${item.placeUrl}`} className="py-2">
                   <p className="font-medium">{item.placeName}</p>
                   <p className="text-xs text-muted-foreground">
                     {item.categoryName} · {item.validation} ({item.score}점)

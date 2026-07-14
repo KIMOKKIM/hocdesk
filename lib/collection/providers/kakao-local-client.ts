@@ -1,4 +1,8 @@
 import { EXTERNAL_SEARCH_LIMITS } from "@/lib/config/external-search-limits";
+import {
+  getKakaoRestApiKey,
+  isKakaoApiConfigured,
+} from "@/lib/collection/kakao-env";
 
 export type KakaoLocalPlace = {
   id: string;
@@ -45,10 +49,10 @@ export class KakaoApiError extends Error {
 }
 
 function getApiKey(): string {
-  const key = process.env.KAKAO_REST_API_KEY?.trim();
+  const key = getKakaoRestApiKey();
   if (!key) {
     throw new KakaoApiError(
-      "KAKAO_REST_API_KEY가 설정되지 않았습니다. .env에 API 키를 입력한 후 개발 서버를 재시작하세요.",
+      "KAKAO_REST_API_KEY가 설정되어 있지 않습니다.",
       503,
       "MISSING_API_KEY",
     );
@@ -56,9 +60,7 @@ function getApiKey(): string {
   return key;
 }
 
-export function isKakaoApiConfigured(): boolean {
-  return Boolean(process.env.KAKAO_REST_API_KEY?.trim());
-}
+export { isKakaoApiConfigured };
 
 export async function searchKakaoLocal(
   params: KakaoSearchParams,

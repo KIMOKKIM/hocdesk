@@ -14,6 +14,7 @@ import {
 } from "@/lib/collection/limits";
 import { collectionAudit, collectionError, collectionLog } from "@/lib/collection/logger";
 import {
+  assertKakaoProviderReady,
   getTargetSearchProvider,
   resolveSearchProviderName,
 } from "@/lib/collection/providers";
@@ -114,6 +115,9 @@ export async function createInitialCollectionJob({
   }
 
   const providerName = resolveSearchProviderName(providerOverride);
+  // Kakao/composite는 키 없으면 job을 만들지 않는다 (조용한 demo fallback 금지)
+  assertKakaoProviderReady(providerName);
+
   let searchPlan: SearchPlan = buildInitialSearchPlan(projectId, boundedRequest);
   if (providerName === "kakao" || providerName === "composite") {
     searchPlan = enrichSearchPlanWithKakaoQueries(searchPlan, providerName);

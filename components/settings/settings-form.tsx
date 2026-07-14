@@ -20,7 +20,16 @@ type SettingsFormProps = {
   searchProviderStatus: {
     provider: string;
     providerLabel: string;
+    providerName?: string;
+    configured?: boolean;
     apiKeyPresent: boolean;
+    apiKeyMasked?: string | null;
+    targetSearchProvider?: string;
+    message?: string;
+    statusKind?: string;
+    misconfiguredHints?: string[];
+    environment?: string;
+    vercel?: boolean;
     lastSuccessAt: string | null;
     lastErrorAt: string | null;
     lastErrorMessage: string | null;
@@ -49,6 +58,18 @@ export function SettingsForm({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const provider = searchProviderStatus.provider;
+  const apiKeyPresent = searchProviderStatus.apiKeyPresent;
+  const statusKind =
+    searchProviderStatus.statusKind ??
+    (provider === "demo"
+      ? "demo"
+      : provider === "kakao" || provider === "composite"
+        ? apiKeyPresent
+          ? "kakao_ready"
+          : "kakao_missing_key"
+        : "unsupported");
 
   async function saveProfile() {
     setLoading(true);
@@ -102,7 +123,10 @@ export function SettingsForm({
     setSuppression((prev) => prev.filter((item) => item.id !== id));
   }
 
-  function updateField<K extends keyof SenderProfile>(key: K, value: SenderProfile[K]) {
+  function updateField<K extends keyof SenderProfile>(
+    key: K,
+    value: SenderProfile[K],
+  ) {
     setProfile((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -116,12 +140,27 @@ export function SettingsForm({
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <p className="text-muted-foreground">현재 Provider</p>
-              <p className="font-medium">{searchProviderStatus.providerLabel}</p>
+              <p className="font-medium">
+                {searchProviderStatus.providerName ??
+                  searchProviderStatus.providerLabel}
+              </p>
             </div>
             <div>
-              <p className="text-muted-foreground">Kakao API 키</p>
+              <p className="text-muted-foreground">Kakao API 키 설정 여부</p>
               <p className="font-medium">
-                {searchProviderStatus.apiKeyPresent ? "설정됨" : "미설정"}
+                {apiKeyPresent ? "설정됨" : "미설정"}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">API 키 마스킹</p>
+              <p className="font-medium font-mono">
+                {searchProviderStatus.apiKeyMasked ?? "-"}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">TARGET_SEARCH_PROVIDER</p>
+              <p className="font-medium font-mono">
+                {searchProviderStatus.targetSearchProvider ?? provider}
               </p>
             </div>
             <div>
@@ -138,27 +177,86 @@ export function SettingsForm({
                   "-"}
               </p>
             </div>
+            <div>
+              <p className="text-muted-foreground">환경</p>
+              <p className="font-medium">
+                {searchProviderStatus.environment ?? "-"}
+                {searchProviderStatus.vercel ? " · Vercel" : ""}
+              </p>
+            </div>
           </div>
-          {searchProviderStatus.provider === "demo" ? (
+
+          {statusKind === "demo" ? (
             <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
-              현재 Provider가 데모입니다. 운영에서는 Kakao 실제 업체 검색을
-              사용하세요. (TARGET_SEARCH_PROVIDER=kakao)
+              현재 데모 검색 Provider입니다. 운영에서는 kakao를 권장합니다.
             </p>
           ) : null}
-          {!searchProviderStatus.apiKeyPresent ? (
+
+          {statusKind === "kakao_missing_key" ? (
+            <div className="space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive">
+              <p>
+                KAKAO_REST_API_KEY가 설정되지 않았습니다. Vercel Production
+                환경변수에 추가 후 Redeploy하세요.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {searchProviderStatus.message}
+              </p>
+            </div>
+          ) : null}
+
+          {statusKind === "kakao_ready" ? (
+            <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-emerald-800 dark:text-emerald-200">
+              Kakao API 키가 설정되어 있습니다. 연결 테스트를 실행할 수
+              있습니다.
+            </p>
+          ) : null}
+
+          {statusKind === "unsupported" ? (
             <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive">
-              Kakao API 키가 없어 실제 업체 검색을 실행할 수 없습니다.
-              KAKAO_REST_API_KEY를 설정하세요.
+              지원하지 않는 TARGET_SEARCH_PROVIDER 값입니다.
             </p>
           ) : null}
+
+          {searchProviderStatus.misconfiguredHints &&
+          searchProviderStatus.misconfiguredHints.length > 0 ? (
+            <ul className="list-disc space-y-1 rounded-lg border border-amber-300 bg-amber-50 p-3 pl-5 text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+              {searchProviderStatus.misconfiguredHints.map((hint) => (
+                <li key={hint}>{hint}</li>
+              ))}
+            </ul>
+          ) : null}
+
+          <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground space-y-2">
+            <p className="font-medium text-foreground">Vercel 환경변수 설정</p>
+            <p>
+              Vercel Dashboard → hocdesk 프로젝트 → Settings → Environment
+              Variables
+            </p>
+            <pre className="overflow-x-auto rounded border bg-background p-2 font-mono">
+              {`TARGET_SEARCH_PROVIDER=kakao
+KAKAO_REST_API_KEY=<카카오 REST API 키>`}
+            </pre>
+            <ul className="list-disc space-y-1 pl-4">
+              <li>Production 환경에 추가해야 합니다.</li>
+              <li>Preview에만 추가하면 운영 사이트에서 인식되지 않습니다.</li>
+              <li>저장 후 반드시 Redeploy해야 합니다.</li>
+              <li>변수명은 KAKAO_REST_API_KEY입니다.</li>
+              <li>NEXT_PUBLIC_ 접두사를 붙이면 안 됩니다.</li>
+            </ul>
+          </div>
+
           <p className="text-muted-foreground">
-            일일 신규 {searchProviderStatus.limits.dailyNewCompanies}건 · 검토대기
-            한도 {searchProviderStatus.limits.maxPendingReview}건 · 작업당 검색어{" "}
-            {searchProviderStatus.limits.maxQueriesPerJob}개
+            일일 신규 {searchProviderStatus.limits.dailyNewCompanies}건 ·
+            검토대기 한도 {searchProviderStatus.limits.maxPendingReview}건 ·
+            작업당 검색어 {searchProviderStatus.limits.maxQueriesPerJob}개
           </p>
           <KakaoConnectionTestPanel
-            apiKeyPresent={searchProviderStatus.apiKeyPresent}
-            providerLabel={searchProviderStatus.providerLabel}
+            apiKeyPresent={apiKeyPresent}
+            apiKeyMasked={searchProviderStatus.apiKeyMasked}
+            providerLabel={
+              searchProviderStatus.providerName ??
+              searchProviderStatus.providerLabel
+            }
           />
         </CardContent>
       </Card>
@@ -241,7 +339,9 @@ export function SettingsForm({
             </Button>
           </div>
           {suppression.length === 0 ? (
-            <p className="text-sm text-muted-foreground">등록된 수신거부 이메일이 없습니다.</p>
+            <p className="text-sm text-muted-foreground">
+              등록된 수신거부 이메일이 없습니다.
+            </p>
           ) : (
             <ul className="divide-y text-sm">
               {suppression.map((item) => (

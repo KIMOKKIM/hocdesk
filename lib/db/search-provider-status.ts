@@ -1,8 +1,15 @@
 import { COLLECTION_LIMITS } from "@/lib/config/collection-limits";
 import { EXTERNAL_SEARCH_LIMITS } from "@/lib/config/external-search-limits";
 import {
-  getProviderDisplayName,
+  buildKakaoKeyMissingMessage,
+  getKakaoEnvRuntimeMeta,
+  getMisconfiguredKakaoEnvHints,
   isKakaoApiConfigured,
+  maskKakaoApiKey,
+  resolveKakaoProviderStatusMessage,
+} from "@/lib/collection/kakao-env";
+import {
+  getProviderDisplayName,
   resolveSearchProviderName,
 } from "@/lib/collection/providers";
 import { prisma } from "@/lib/prisma";
@@ -76,26 +83,65 @@ export async function recordProviderError(
 
 export async function getSearchProviderStatus() {
   let provider = "demo";
-  let providerLabel = "DemoSearchProvider";
+  let providerName = "DemoSearchProvider";
+  let providerValid = true;
+
   try {
     provider = resolveSearchProviderName();
-    providerLabel = getProviderDisplayName();
+    providerName = getProviderDisplayName();
   } catch {
-    provider = process.env.TARGET_SEARCH_PROVIDER ?? "demo";
-    providerLabel = `알 수 없음 (${provider})`;
+    provider = (process.env.TARGET_SEARCH_PROVIDER ?? "unknown").trim() || "unknown";
+    providerName = `알 수 없음 (${provider})`;
+    providerValid = false;
   }
+
   const stored = await getStoredProviderStatus();
-  const kakaoConfigured = isKakaoApiConfigured();
+  const apiKeyPresent = isKakaoApiConfigured();
+  const apiKeyMasked = maskKakaoApiKey();
+  const runtime = getKakaoEnvRuntimeMeta();
+  const misconfiguredHints = getMisconfiguredKakaoEnvHints();
+
+  const needsKakaoKey = provider === "kakao" || provider === "composite";
+  const providerConfigured =
+    provider === "demo"
+      ? true
+      : needsKakaoKey
+        ? apiKeyPresent
+        : providerValid;
+
+  const statusMessage = providerValid
+    ? resolveKakaoProviderStatusMessage({ provider, apiKeyPresent })
+    : {
+        kind: "unsupported" as const,
+        message: "지원하지 않는 TARGET_SEARCH_PROVIDER 값입니다.",
+      };
+
+  let message = statusMessage.message;
+  if (!apiKeyPresent && needsKakaoKey) {
+    message = buildKakaoKeyMissingMessage("auto");
+  } else if (apiKeyPresent && needsKakaoKey) {
+    message = "Kakao API 키가 설정되어 있습니다.";
+  }
 
   return {
     provider,
-    providerLabel,
-    configured: provider === "demo" ? true : kakaoConfigured,
-    apiKeyPresent: kakaoConfigured,
+    providerName,
+    providerLabel: providerName,
+    configured: providerConfigured,
+    providerConfigured,
+    apiKeyPresent,
+    apiKeyMasked,
+    targetSearchProvider: provider,
     lastSuccessAt: stored.lastSuccessAt ?? null,
     lastErrorAt: stored.lastErrorAt ?? null,
     lastErrorMessage: stored.lastErrorMessage ?? null,
     quotaStatus: stored.quotaStatus ?? null,
+    message,
+    statusKind: statusMessage.kind,
+    misconfiguredHints,
+    environment: runtime.environment,
+    vercel: runtime.vercel,
+    requiredEnvNames: runtime.requiredEnvNames,
     limits: {
       dailyNewCompanies: COLLECTION_LIMITS.maxNewCompaniesPerDay,
       maxPendingReview: COLLECTION_LIMITS.maxPendingReview,
@@ -112,12 +158,12 @@ export async function getSearchProviderStatus() {
       {
         value: "kakao",
         label: "카카오 실제 업체 검색",
-        enabled: kakaoConfigured,
+        enabled: apiKeyPresent,
       },
       {
         value: "composite",
         label: "복합 검색",
-        enabled: kakaoConfigured,
+        enabled: apiKeyPresent,
       },
     ],
   };

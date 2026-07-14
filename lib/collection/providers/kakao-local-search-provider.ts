@@ -7,6 +7,7 @@ import {
   buildKakaoSearchQueries,
   enrichSearchPlanWithKakaoQueries,
 } from "@/lib/collection/kakao-search-queries";
+import { buildKakaoKeyMissingMessage } from "@/lib/collection/kakao-env";
 import { collectionAudit } from "@/lib/collection/logger";
 import {
   calcSearchProgressPercent,
@@ -40,16 +41,6 @@ export type KakaoSearchContext = {
   cancelled?: boolean;
 };
 
-export function assertKakaoConfigured() {
-  if (!isKakaoApiConfigured()) {
-    throw new KakaoApiError(
-      "KAKAO_REST_API_KEY가 설정되지 않았습니다. .env에 API 키를 입력한 후 개발 서버를 재시작하세요.",
-      503,
-      "MISSING_API_KEY",
-    );
-  }
-}
-
 export type SearchProgressCallbacks = {
   onQueryStart?: (info: {
     query: string;
@@ -72,6 +63,16 @@ export type SearchProgressCallbacks = {
     rawResultCount: number;
   }) => void | Promise<void>;
 };
+
+export function assertKakaoConfigured() {
+  if (!isKakaoApiConfigured()) {
+    throw new KakaoApiError(
+      buildKakaoKeyMissingMessage("auto"),
+      503,
+      "MISSING_API_KEY",
+    );
+  }
+}
 
 export class KakaoLocalSearchProvider implements TargetSearchProvider {
   readonly name = "kakao";

@@ -5,7 +5,10 @@ import type {
 } from "@/lib/collection/types";
 import { CompositeSearchProvider } from "@/lib/collection/providers/composite-search-provider";
 import { DemoSearchProvider } from "@/lib/collection/providers/demo-search-provider";
-import { isKakaoApiConfigured } from "@/lib/collection/providers/kakao-local-client";
+import {
+  buildKakaoKeyMissingMessage,
+  isKakaoApiConfigured,
+} from "@/lib/collection/kakao-env";
 import { KakaoLocalSearchProvider } from "@/lib/collection/providers/kakao-local-search-provider";
 import { PublicDataProvider } from "@/lib/collection/providers/public-data-provider";
 import { WebSearchProvider } from "@/lib/collection/providers/web-search-provider";
@@ -43,6 +46,12 @@ export function resolveSearchProviderName(
   return raw as SearchProviderName;
 }
 
+export function assertKakaoProviderReady(providerName: SearchProviderName) {
+  if (providerName !== "kakao" && providerName !== "composite") return;
+  if (isKakaoApiConfigured()) return;
+  throw new ApiError(buildKakaoKeyMissingMessage("auto"), 503, "API_KEY_MISSING");
+}
+
 export function getTargetSearchProvider(
   override?: string | null,
   jobId?: string,
@@ -71,23 +80,13 @@ export function getTargetSearchProvider(
     case "demo":
       return new DemoSearchProvider();
     case "kakao": {
-      if (!isKakaoApiConfigured()) {
-        throw new ApiError(
-          "KAKAO_REST_API_KEY가 설정되지 않았습니다. .env에 API 키를 입력한 후 개발 서버를 재시작하세요.",
-          503,
-        );
-      }
+      assertKakaoProviderReady("kakao");
       const kakao = new KakaoLocalSearchProvider();
       if (jobId) kakao.setJobContext(jobId);
       return kakao;
     }
     case "composite": {
-      if (!isKakaoApiConfigured()) {
-        throw new ApiError(
-          "Composite Provider는 Kakao API 키가 필요합니다. KAKAO_REST_API_KEY를 설정하세요.",
-          503,
-        );
-      }
+      assertKakaoProviderReady("composite");
       const composite = new CompositeSearchProvider();
       if (jobId) composite.setJobContext(jobId);
       return composite;

@@ -2,6 +2,7 @@ import {
   validateIndustryFit,
   type IndustryValidationResult,
 } from "@/lib/collection/industry-validation";
+import { buildKakaoKeyMissingMessage } from "@/lib/collection/kakao-env";
 import {
   isKakaoApiConfigured,
   KakaoApiError,
@@ -26,6 +27,7 @@ export type KakaoTestResult = {
   elapsedMs: number;
   errorCode?: KakaoTestErrorCode;
   errorMessage?: string;
+  message?: string;
   results: Array<{
     placeName: string;
     categoryName: string;
@@ -37,11 +39,17 @@ export type KakaoTestResult = {
   }>;
 };
 
-function mapKakaoError(error: unknown): { code: KakaoTestErrorCode; message: string } {
+function mapKakaoError(error: unknown): {
+  code: KakaoTestErrorCode;
+  message: string;
+} {
   if (error instanceof KakaoApiError) {
     switch (error.code) {
       case "MISSING_API_KEY":
-        return { code: "API_KEY_MISSING", message: error.message };
+        return {
+          code: "API_KEY_MISSING",
+          message: buildKakaoKeyMissingMessage("auto"),
+        };
       case "UNAUTHORIZED":
         return { code: "AUTHENTICATION_FAILED", message: error.message };
       case "FORBIDDEN":
@@ -67,6 +75,7 @@ export async function runKakaoConnectionTest(
   segmentName = "폐차장",
 ): Promise<KakaoTestResult> {
   if (!isKakaoApiConfigured()) {
+    const message = buildKakaoKeyMissingMessage("auto");
     return {
       configured: false,
       success: false,
@@ -74,8 +83,8 @@ export async function runKakaoConnectionTest(
       resultCount: 0,
       elapsedMs: 0,
       errorCode: "API_KEY_MISSING",
-      errorMessage:
-        "KAKAO_REST_API_KEY가 설정되지 않았습니다. .env에 입력 후 개발 서버를 재시작하세요.",
+      errorMessage: message,
+      message,
       results: [],
     };
   }
@@ -94,6 +103,7 @@ export async function runKakaoConnectionTest(
         elapsedMs,
         errorCode: "NO_RESULTS",
         errorMessage: "검색 결과가 없습니다.",
+        message: "검색 결과가 없습니다.",
         results: [],
       };
     }
@@ -124,6 +134,7 @@ export async function runKakaoConnectionTest(
       query,
       resultCount: results.length,
       elapsedMs,
+      message: "연결 테스트 성공. DB는 변경되지 않았습니다.",
       results,
     };
   } catch (error) {
@@ -136,6 +147,7 @@ export async function runKakaoConnectionTest(
       elapsedMs: Date.now() - started,
       errorCode: mapped.code,
       errorMessage: mapped.message,
+      message: mapped.message,
       results: [],
     };
   }

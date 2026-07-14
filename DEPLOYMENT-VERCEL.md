@@ -37,7 +37,13 @@ Vercel Dashboard → Project → Settings → Environment Variables
 | `ADMIN_PASSWORD` | `<관리자 비밀번호>` | 로그인 PW (`$` 포함 시 로컬 `.env`는 따옴표로 감쌈) |
 | `SESSION_SECRET` | *(긴 랜덤 문자열)* | 세션 HMAC 서명 |
 | `TARGET_SEARCH_PROVIDER` | `kakao` | Kakao 검색 |
-| `KAKAO_REST_API_KEY` | *(Kakao REST API 키)* | 비밀 |
+| `KAKAO_REST_API_KEY` | *(Kakao REST API 키)* | 비밀. **Production**에 설정 후 Redeploy |
+
+> Kakao 키 관련 주의
+> - 변수명은 반드시 `KAKAO_REST_API_KEY`입니다. (`KAKAO_API_KEY`, `NEXT_PUBLIC_KAKAO_*` 사용 금지)
+> - Preview에만 넣으면 운영(`hocdesk.pe.kr`)에서 `apiKeyPresent: false`로 보입니다.
+> - 저장 후 **Redeploy**가 필요합니다.
+> - Settings(`/Jinwoong/settings`)와 `/Jinwoong/api/collection/providers/status`에서 설정 여부만 확인합니다. 키 원문은 절대 표시되지 않습니다.
 | `AI_PROVIDER` | `rules` | 규칙 기반 분석 |
 | `EMAIL_PROVIDER` | `console` | 실발송 없음 |
 | `INCLUDE_DEMO_DATA` | `false` | 운영 데모 데이터 제외 |
@@ -60,6 +66,28 @@ EMAIL_PROVIDER=console
 INCLUDE_DEMO_DATA=false
 ALLOW_DEMO_PROVIDER_IN_PRODUCTION=false
 ```
+
+### Kakao REST API 키 설정 절차
+
+1. [Kakao Developers](https://developers.kakao.com/)에서 애플리케이션의 **REST API 키**를 복사합니다.
+2. Vercel Dashboard → **hocdesk** 프로젝트 → **Settings** → **Environment Variables**
+3. 다음을 **Production**에 추가합니다.
+
+```
+TARGET_SEARCH_PROVIDER=kakao
+KAKAO_REST_API_KEY=<카카오 REST API 키>
+```
+
+4. 저장 후 **Redeploy**합니다.
+5. 확인:
+   - https://hocdesk.pe.kr/Jinwoong/settings → “Kakao API 키 설정됨”
+   - https://hocdesk.pe.kr/Jinwoong/api/collection/providers/status → `apiKeyPresent: true`
+
+주의:
+- Production 환경에 추가해야 합니다.
+- Preview에만 추가하면 운영 사이트에서 인식되지 않습니다.
+- `NEXT_PUBLIC_` 접두사를 붙이면 안 됩니다 (클라이언트 노출 위험).
+- API 키 원문은 화면에 표시되지 않습니다 (마스킹 `****abcd`만 표시).
 
 - `TURSO_*`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `KAKAO_REST_API_KEY`는 **런타임**에 검증됩니다. 빌드 단계에서 미설정이어도 `next build`는 통과합니다.
 - 비밀키에 `NEXT_PUBLIC_` 접두사를 붙이지 마세요.
