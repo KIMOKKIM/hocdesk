@@ -50,11 +50,37 @@ export function assertKakaoConfigured() {
   }
 }
 
+export type SearchProgressCallbacks = {
+  onQueryStart?: (info: {
+    query: string;
+    processedQueries: number;
+    totalQueries: number;
+  }) => void | Promise<void>;
+  onQueryComplete?: (info: {
+    query: string;
+    processedQueries: number;
+    totalQueries: number;
+    apiCallCount: number;
+    rawResultCount: number;
+    queryRawCount: number;
+  }) => void | Promise<void>;
+  onProgress?: (info: {
+    currentQuery: string | null;
+    processedQueries: number;
+    totalQueries: number;
+    apiCallCount: number;
+    rawResultCount: number;
+  }) => void | Promise<void>;
+};
+
 export class KakaoLocalSearchProvider implements TargetSearchProvider {
   readonly name = "kakao";
   private context: KakaoSearchContext = createEmptyContext();
 
-  async searchCompanies(searchPlan: SearchPlan): Promise<SearchCandidate[]> {
+  async searchCompanies(
+    searchPlan: SearchPlan,
+    callbacks?: SearchProgressCallbacks,
+  ): Promise<SearchCandidate[]> {
     assertKakaoConfigured();
     this.context = createEmptyContext();
     this.context.jobId = searchPlan.jobId ?? this.context.jobId;
@@ -104,6 +130,18 @@ export class KakaoLocalSearchProvider implements TargetSearchProvider {
           lastMessage: `검색어 처리 중: ${item.query}`,
         });
       }
+      await callbacks?.onQueryStart?.({
+        query: item.query,
+        processedQueries,
+        totalQueries: queries.length,
+      });
+      await callbacks?.onProgress?.({
+        currentQuery: item.query,
+        processedQueries,
+        totalQueries: queries.length,
+        apiCallCount: this.context.apiCallCount,
+        rawResultCount: this.context.rawResultCount,
+      });
 
       let queryRawCount = 0;
 
@@ -232,6 +270,21 @@ export class KakaoLocalSearchProvider implements TargetSearchProvider {
           lastMessage: `검색어 ${item.query} 처리 완료: 원본 ${queryRawCount}건`,
         });
       }
+      await callbacks?.onQueryComplete?.({
+        query: item.query,
+        processedQueries,
+        totalQueries: queries.length,
+        apiCallCount: this.context.apiCallCount,
+        rawResultCount: this.context.rawResultCount,
+        queryRawCount,
+      });
+      await callbacks?.onProgress?.({
+        currentQuery: item.query,
+        processedQueries,
+        totalQueries: queries.length,
+        apiCallCount: this.context.apiCallCount,
+        rawResultCount: this.context.rawResultCount,
+      });
     }
 
     if (this.context.cancelled) {
@@ -239,9 +292,8 @@ export class KakaoLocalSearchProvider implements TargetSearchProvider {
     }
 
     if (results.length === 0) {
-      throw new Error(
-        "Kakao 검색 결과가 없거나 업종 검증을 통과한 후보가 없습니다.",
-      );
+      // 실패로 처리하지 않고 빈 결과로 완료 경로를 탄다 (결과 없음 상태 구분)
+      return [];
     }
 
     return results.slice(0, searchPlan.maxTotal);

@@ -165,10 +165,26 @@ export function InitialCollectionPanel({
   }
 
   const fetchJobDetail = useCallback(async (jobId: string) => {
-    const response = await fetch(withBasePath(`/api/collection/jobs/${jobId}`));
-    const data = await response.json();
-    if (data.ok) {
-      setLatestJob(data.job);
+    let attempts = 0;
+    while (attempts < 3) {
+      try {
+        const response = await fetch(
+          withBasePath(`/api/collection/jobs/${jobId}`),
+          { cache: "no-store" },
+        );
+        const data = await response.json();
+        if (data.ok) {
+          setLatestJob(data.job);
+          setError(null);
+          return;
+        }
+        throw new Error(data.error ?? "상태 확인 실패");
+      } catch {
+        attempts += 1;
+        if (attempts >= 3) {
+          setError("상태 확인 실패. 새로고침을 눌러 다시 시도하세요.");
+        }
+      }
     }
   }, []);
 
@@ -266,7 +282,7 @@ export function InitialCollectionPanel({
     : "없음";
 
   return (
-    <Card className="border-border/80 shadow-sm">
+    <Card id="target-collection-panel" className="border-border/80 shadow-sm">
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div>
           <CardTitle>타깃 업체 자동수집</CardTitle>
@@ -284,17 +300,36 @@ export function InitialCollectionPanel({
             <History data-icon="inline-start" />
             수집 이력 보기
           </Button>
-          <Button variant="outline" size="sm" onClick={() => fetchJobs()}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (latestJob?.id) {
+                void fetchJobDetail(latestJob.id);
+              } else {
+                void fetchJobs();
+              }
+            }}
+          >
             <RefreshCw data-icon="inline-start" />
             새로고침
           </Button>
+          {(isRunning || isActive) && latestJob ? (
+            <Button
+              variant="outline"
+              size="sm"
+              render={<Link href={`/collection-jobs/${latestJob.id}`} />}
+            >
+              상태 보기
+            </Button>
+          ) : null}
           <Button size="sm" disabled={isRunning || isActive} onClick={openConfirmDialog}>
             {isRunning || isActive ? (
               <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
             ) : (
               <Play data-icon="inline-start" />
             )}
-            {isRunning || isActive ? "수집 중" : "초기 타깃 수집"}
+            {isRunning || isActive ? "수집 진행 중" : "초기 타깃 수집"}
           </Button>
         </div>
       </CardHeader>

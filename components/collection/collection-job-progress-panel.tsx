@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
-  formatElapsed,
-  stalledProgressWarning,
-} from "@/lib/collection/progress-shared";
+  buildJobStatusDisplay,
+  resolveProgressCounts,
+} from "@/lib/collection/job-status-display";
+import { formatElapsed } from "@/lib/collection/progress-shared";
 import { CollectionJobStatus } from "@/lib/constants/status";
 import { withBasePath } from "@/lib/paths";
 
@@ -34,6 +35,8 @@ export type CollectionJobProgress = {
   completedAt?: string | null;
   errorMessage?: string | null;
   projectId?: string;
+  jobStats?: unknown;
+  provider?: string;
 };
 
 const TERMINAL_STATUSES = new Set<string>([
@@ -59,6 +62,8 @@ export function CollectionJobProgressPanel({
   const [polled, setPolled] = useState<CollectionJobProgress | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [cancelPending, setCancelPending] = useState(false);
+  const [pollError, setPollError] = useState<string | null>(null);
+  const failCountRef = useRef(0);
   const onUpdateRef = useRef(onUpdate);
 
   useEffect(() => {
@@ -69,13 +74,26 @@ export function CollectionJobProgressPanel({
     polled && polled.id === job.id ? polled : job;
 
   const fetchProgress = useCallback(async () => {
-    const response = await fetch(
-      withBasePath(`/api/collection/jobs/${job.id}`),
-    );
-    const data = await response.json();
-    if (data.ok && data.job) {
-      setPolled(data.job);
-      onUpdateRef.current?.(data.job);
+    try {
+      const response = await fetch(
+        withBasePath(`/api/collection/jobs/${job.id}`),
+        { cache: "no-store" },
+      );
+      const data = await response.json();
+      if (data.ok && data.job) {
+        failCountRef.current = 0;
+        setPollError(null);
+        setPolled(data.job);
+        onUpdateRef.current?.(data.job);
+        return true;
+      }
+      throw new Error(data.error ?? "상태 확인 실패");
+    } catch {
+      failCountRef.current += 1;
+      if (failCountRef.current >= 3) {
+        setPollError("상태 확인 실패. 새로고침을 눌러 다시 시도하세요.");
+      }
+      return false;
     }
   }, [job.id]);
 
@@ -93,13 +111,18 @@ export function CollectionJobProgressPanel({
     return () => clearInterval(interval);
   }, [poll, displayJob.status, fetchProgress]);
 
+  const statusDisplay = useMemo(
+    () => buildJobStatusDisplay(displayJob),
+    // now forces elapsed/stale recalculation while polling
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [displayJob, now],
+  );
+  const counts = resolveProgressCounts(displayJob);
+
   const percent =
     displayJob.progressPercent ??
     (TERMINAL_STATUSES.has(displayJob.status) ? 100 : 0);
-  const stallWarning = stalledProgressWarning(
-    displayJob.lastProgressAt,
-    displayJob.status,
-  );
+
   const isRunning =
     displayJob.status === CollectionJobStatus.RUNNING ||
     displayJob.status === CollectionJobStatus.QUEUED ||
@@ -121,6 +144,8 @@ export function CollectionJobProgressPanel({
     await fetch(withBasePath(`/api/collection/jobs/${displayJob.id}/run`), {
       method: "POST",
     });
+    failCountRef.current = 0;
+    setPollError(null);
     await fetchProgress();
   }
 
@@ -129,27 +154,42 @@ export function CollectionJobProgressPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-medium">
-            진행률: {percent}% · {displayJob.statusLabel ?? displayJob.status}
+            상태: {statusDisplay.label}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            현재 단계: {displayJob.currentStep ?? "-"}
+            {statusDisplay.description}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            진행률 {percent}% · {displayJob.statusLabel ?? displayJob.status}
+            {displayJob.currentStep
+              ? ` · 단계: ${displayJob.currentStep}`
+              : ""}
           </p>
         </div>
-        {isRunning ? (
+        <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
             variant="outline"
-            disabled={
-              cancelPending ||
-              displayJob.status === CollectionJobStatus.CANCEL_REQUESTED
-            }
-            onClick={() => void handleCancel()}
+            onClick={() => void fetchProgress()}
           >
-            {displayJob.status === CollectionJobStatus.CANCEL_REQUESTED
-              ? "취소 처리 중..."
-              : "취소 요청"}
+            새로고침
           </Button>
-        ) : null}
+          {isRunning ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={
+                cancelPending ||
+                displayJob.status === CollectionJobStatus.CANCEL_REQUESTED
+              }
+              onClick={() => void handleCancel()}
+            >
+              {displayJob.status === CollectionJobStatus.CANCEL_REQUESTED
+                ? "취소 처리 중..."
+                : "취소 요청"}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -160,25 +200,22 @@ export function CollectionJobProgressPanel({
       </div>
 
       <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
-        <ProgressStat label="현재 검색어" value={displayJob.currentQuery ?? "-"} />
+        <ProgressStat
+          label="현재 검색어"
+          value={displayJob.currentQuery ?? "-"}
+        />
         <ProgressStat
           label="검색어 처리"
-          value={`${displayJob.processedQueries ?? 0} / ${displayJob.totalQueries ?? 0}`}
+          value={`${counts.processedQueries} / ${counts.totalQueries}`}
         />
-        <ProgressStat
-          label="API 호출"
-          value={`${displayJob.apiCallCount ?? 0}회`}
-        />
-        <ProgressStat
-          label="원본 결과"
-          value={`${displayJob.rawResultCount ?? 0}건`}
-        />
-        <ProgressStat label="신규" value={`${displayJob.acceptedCount ?? 0}`} />
-        <ProgressStat label="중복" value={`${displayJob.duplicateCount ?? 0}`} />
-        <ProgressStat label="제외" value={`${displayJob.rejectedCount ?? 0}`} />
+        <ProgressStat label="API 호출" value={`${counts.apiCallCount}회`} />
+        <ProgressStat label="원본 결과" value={`${counts.rawResultCount}건`} />
+        <ProgressStat label="신규" value={`${counts.acceptedCount}`} />
+        <ProgressStat label="중복" value={`${counts.duplicateCount}`} />
+        <ProgressStat label="제외" value={`${counts.rejectedCount}`} />
         <ProgressStat
           label="검토 필요"
-          value={`${displayJob.reviewRequiredCount ?? 0}`}
+          value={`${counts.reviewRequiredCount}`}
         />
         <ProgressStat
           label="마지막 업데이트"
@@ -191,7 +228,9 @@ export function CollectionJobProgressPanel({
         />
         <ProgressStat
           label="경과 시간"
-          value={formatElapsed(displayJob.startedAtIso ?? displayJob.startedAt)}
+          value={formatElapsed(
+            displayJob.startedAtIso ?? displayJob.startedAt,
+          )}
         />
       </div>
 
@@ -199,9 +238,36 @@ export function CollectionJobProgressPanel({
         <p className="text-sm text-muted-foreground">{displayJob.lastMessage}</p>
       ) : null}
 
-      {stallWarning ? (
-        <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
-          {stallWarning}
+      {statusDisplay.staleWarning ? (
+        <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+          <p>{statusDisplay.staleWarning}</p>
+          {statusDisplay.isStale &&
+          statusDisplay.staleWarning.includes("멈춘") ? (
+            <ul className="list-disc space-y-1 pl-4 text-xs">
+              <li>
+                <Link
+                  href={`/collection-jobs/${displayJob.id}`}
+                  className="underline"
+                >
+                  수집 이력에서 상세 확인
+                </Link>
+              </li>
+              <li>새로고침으로 최신 상태를 다시 조회하세요.</li>
+              <li>재시도는 작업 실패 또는 완료 후 가능합니다.</li>
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+
+      {statusDisplay.vercelTimeoutHint ? (
+        <p className="rounded-md border border-sky-300 bg-sky-50 p-2 text-sm text-sky-900 dark:bg-sky-950/20 dark:text-sky-100">
+          {statusDisplay.vercelTimeoutHint}
+        </p>
+      ) : null}
+
+      {pollError ? (
+        <p className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-sm text-destructive">
+          {pollError}
         </p>
       ) : null}
 
@@ -212,7 +278,8 @@ export function CollectionJobProgressPanel({
           </p>
           <p>{displayJob.errorMessage ?? "알 수 없는 오류"}</p>
           <p className="text-muted-foreground">
-            Vercel Logs에서 상세 오류를 확인하세요.
+            Vercel Logs에서 상세 오류를 확인하세요. (비밀키·API 응답은 로그에
+            남기지 않습니다)
           </p>
           {showActions ? (
             <Button size="sm" variant="outline" onClick={() => void handleRetry()}>
@@ -220,6 +287,12 @@ export function CollectionJobProgressPanel({
             </Button>
           ) : null}
         </div>
+      ) : null}
+
+      {statusDisplay.isCompleted && statusDisplay.isNoResult ? (
+        <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+          {statusDisplay.description}
+        </p>
       ) : null}
 
       {showActions &&
@@ -245,8 +318,6 @@ export function CollectionJobProgressPanel({
           </Button>
         </div>
       ) : null}
-
-      <span className="hidden">{now}</span>
     </div>
   );
 }
@@ -255,7 +326,7 @@ function ProgressStat({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-medium">{value}</p>
+      <p className="font-medium break-all">{value}</p>
     </div>
   );
 }

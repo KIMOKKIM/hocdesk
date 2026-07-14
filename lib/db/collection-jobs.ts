@@ -70,7 +70,7 @@ function mapJobSummary(job: JobRow) {
     jobType: job.jobType,
     status: job.status,
     statusLabel: collectionStatusLabel(job.status),
-    provider: plan.provider ?? "demo",
+    provider: plan.provider ?? "kakao",
     requestedSegments: plan.requestedSegments ?? [],
     requestedCount: job.requestedCount,
     collectedCount: job.collectedCount,
@@ -259,6 +259,10 @@ export async function getCollectionJobDetail(jobId: string) {
     jobType: job.jobType,
     status: job.status,
     statusLabel: collectionStatusLabel(job.status),
+    provider:
+      (job.searchPlan as { provider?: string } | null)?.provider ??
+      (job.jobStats as { provider?: string } | null)?.provider ??
+      "unknown",
     searchPlan: job.searchPlan,
     jobStats: job.jobStats,
     requestedCount: job.requestedCount,
@@ -271,8 +275,14 @@ export async function getCollectionJobDetail(jobId: string) {
     currentQuery: job.currentQuery ?? null,
     processedQueries: job.processedQueries ?? 0,
     totalQueries: job.totalQueries ?? 0,
-    apiCallCount: job.apiCallCount ?? 0,
-    rawResultCount: job.rawResultCount ?? 0,
+    apiCallCount:
+      job.apiCallCount ??
+      (job.jobStats as { apiCallCount?: number } | null)?.apiCallCount ??
+      0,
+    rawResultCount:
+      job.rawResultCount ??
+      (job.jobStats as { rawResultCount?: number } | null)?.rawResultCount ??
+      0,
     reviewRequiredCount: job.reviewRequiredCount ?? 0,
     lastProgressAt: job.lastProgressAt
       ? job.lastProgressAt.toISOString()

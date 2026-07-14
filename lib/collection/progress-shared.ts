@@ -62,7 +62,7 @@ export function stalledProgressWarning(
   if (Number.isNaN(at.getTime())) return null;
   const elapsedMs = Date.now() - at.getTime();
   if (elapsedMs >= 180_000) {
-    return "작업이 멈춘 것으로 보입니다. 새로고침 또는 재시도를 검토하세요.";
+    return "작업이 멈춘 것으로 보입니다. 수집 이력을 확인하거나 재시도하세요.";
   }
   if (elapsedMs >= 60_000) {
     return "진행상태 갱신이 지연되고 있습니다.";

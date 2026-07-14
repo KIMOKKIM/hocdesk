@@ -327,7 +327,63 @@ export async function runCollectionJob(
     }
 
     if (candidates.length === 0) {
-      throw new Error("업체 후보가 생성되지 않았습니다. 검색계획을 확인하세요.");
+      const raw = kakaoContext?.rawResultCount ?? 0;
+      const industryRejected = kakaoContext?.industryRejected ?? 0;
+      const emptyMessage =
+        raw === 0
+          ? "검색은 완료되었지만 Kakao에서 해당 조건의 업체를 찾지 못했습니다."
+          : industryRejected > 0
+            ? "검색 결과는 있었지만 업종 적합성 검증에서 모두 제외되었습니다."
+            : "업체 후보가 생성되지 않았습니다. 검색계획을 확인하세요.";
+
+      const emptyStatus = dryRun
+        ? CollectionJobStatus.DRY_RUN
+        : CollectionJobStatus.COMPLETED;
+
+      const emptyStats = buildJobStats({
+        provider: providerName,
+        searchPlan,
+        kakaoContext,
+        collectedCount: 0,
+        acceptedCount: 0,
+        duplicateCount: 0,
+        rejectedCount: industryRejected,
+        withPhone: 0,
+        withoutWebsite: 0,
+        withoutEmail: 0,
+      });
+
+      await updateJobProgress(job.id, {
+        status: emptyStatus,
+        currentStep: CollectionProgressStep.COMPLETED,
+        progressPercent: 100,
+        collectedCount: 0,
+        acceptedCount: 0,
+        duplicateCount: 0,
+        rejectedCount: industryRejected,
+        reviewRequiredCount: kakaoContext?.industryReview ?? 0,
+        apiCallCount: kakaoContext?.apiCallCount,
+        rawResultCount: raw,
+        completedAt: new Date(),
+        lastMessage: emptyMessage,
+        jobStats: emptyStats,
+      });
+
+      if (isExternal) {
+        collectionAudit(job.id, "EXTERNAL_SEARCH_COMPLETED", {
+          provider: providerName,
+          acceptedCount: 0,
+          duplicateCount: 0,
+          rejectedCount: industryRejected,
+          dryRun,
+          noResults: true,
+        });
+      }
+
+      const updatedEmpty = await prisma.targetCollectionJob.findUniqueOrThrow({
+        where: { id: job.id },
+      });
+      return mapJobResult(updatedEmpty, gradeCounts, emptyStats);
     }
 
     if (kakaoContext) {
@@ -536,6 +592,20 @@ export async function runCollectionJob(
       ? CollectionJobStatus.DRY_RUN
       : CollectionJobStatus.COMPLETED;
 
+    const completionMessage = dryRun
+      ? acceptedCount > 0
+        ? `미리보기 완료: 후보 ${acceptedCount}건`
+        : "미리보기 모드로 검색 후보만 생성되었습니다. 후보 목록에서 선택 등록하세요."
+      : acceptedCount > 0
+        ? `수집 완료: 신규 ${acceptedCount}곳 등록`
+        : duplicateCount > 0 && rejectedCount === 0
+          ? "신규 업체는 없고 기존 등록 업체와 중복되었습니다."
+          : (kakaoContext?.rawResultCount ?? 0) > 0 && rejectedCount > 0
+            ? "검색 결과는 있었지만 업종 적합성 검증에서 모두 제외되었습니다."
+            : (kakaoContext?.rawResultCount ?? 0) === 0
+              ? "검색은 완료되었지만 Kakao에서 해당 조건의 업체를 찾지 못했습니다."
+              : "수집 작업이 완료되었습니다.";
+
     await updateJobProgress(job.id, {
       status: finalStatus,
       currentStep: CollectionProgressStep.COMPLETED,
@@ -548,9 +618,7 @@ export async function runCollectionJob(
       apiCallCount: kakaoContext?.apiCallCount,
       rawResultCount: kakaoContext?.rawResultCount,
       completedAt: new Date(),
-      lastMessage: dryRun
-        ? "미리보기가 완료되었습니다."
-        : "수집 작업이 완료되었습니다.",
+      lastMessage: completionMessage,
       jobStats,
     });
 

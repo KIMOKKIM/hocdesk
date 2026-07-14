@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildJobStatusDisplay } from "@/lib/collection/job-status-display";
 import { getCollectionJobDetail } from "@/lib/db/collection-jobs";
 
 type RouteParams = { params: Promise<{ jobId: string }> };
@@ -14,5 +15,16 @@ export async function GET(_request: Request, { params }: RouteParams) {
     );
   }
 
-  return NextResponse.json({ ok: true, job });
+  const statusDisplay = buildJobStatusDisplay({
+    ...job,
+    dryRun: job.status === "DRY_RUN",
+  });
+
+  return NextResponse.json({
+    ok: true,
+    job: {
+      ...job,
+      statusDisplay,
+    },
+  });
 }

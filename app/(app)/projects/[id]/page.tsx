@@ -415,9 +415,34 @@ export default async function ProjectDetailPage({
         </CardHeader>
         <CardContent className="space-y-3">
           {!project.projectCompanies || project.projectCompanies.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              등록된 타깃 업체가 없습니다. 카카오 실제 업체 검색을 실행하세요.
-            </p>
+            <div className="space-y-4 rounded-lg border border-dashed p-6">
+              <div>
+                <p className="font-medium">아직 실제 타깃 업체가 없습니다</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  카카오 실제 업체 검색을 실행하면 검토대기 상태의 실제 업체가
+                  이곳에 표시됩니다.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button render={<Link href="#target-collection-panel" />}>
+                  카카오 검색 실행
+                </Button>
+                <Button
+                  variant="outline"
+                  render={
+                    <Link href={`/search-candidates?projectId=${projectId}`} />
+                  }
+                >
+                  검색 후보 보기
+                </Button>
+                <Button
+                  variant="outline"
+                  render={<Link href="#target-collection-panel" />}
+                >
+                  수집 이력 보기
+                </Button>
+              </div>
+            </div>
           ) : (
             project.projectCompanies.map((target) => (
               <Link

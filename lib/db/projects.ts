@@ -3,15 +3,25 @@ import { formatDate, formatKoreanWon } from "@/lib/format";
 import { projectStatusLabels } from "@/lib/constants/labels";
 import { ProjectStatus } from "@/lib/constants/status";
 import { isDatabaseSetupError } from "@/lib/db/errors";
+import {
+  demoCompanyExcludeWhere,
+  resolveIncludeDemo,
+} from "@/lib/demo-filter";
 
 export async function getProjects() {
+  const includeDemo = resolveIncludeDemo();
+  const companyFilter = includeDemo ? {} : demoCompanyExcludeWhere();
+
   const projects = await prisma.project.findMany({
     orderBy: { updatedAt: "desc" },
     include: {
       _count: {
         select: {
           projectCompanies: {
-            where: { reviewStatus: { not: "EXCLUDED" } },
+            where: {
+              reviewStatus: { not: "EXCLUDED" },
+              ...(includeDemo ? {} : { company: companyFilter }),
+            },
           },
         },
       },
@@ -71,19 +81,30 @@ function mapProjectDetail<T extends {
  * 관계 테이블이 없으면 기본 정보만 반환한다.
  */
 export async function getProjectByIdOrSlug(param: string) {
+  const includeDemo = resolveIncludeDemo();
+  const companyFilter = includeDemo ? {} : demoCompanyExcludeWhere();
+
   try {
     const project = await prisma.project.findUnique({
       where: { id: param },
       include: {
         _count: {
           select: {
-            projectCompanies: true,
+            projectCompanies: {
+              where: {
+                reviewStatus: { not: "EXCLUDED" },
+                ...(includeDemo ? {} : { company: companyFilter }),
+              },
+            },
             outreachs: true,
             dailyActivities: true,
           },
         },
         projectCompanies: {
-          where: { reviewStatus: { not: "EXCLUDED" } },
+          where: {
+            reviewStatus: { not: "EXCLUDED" },
+            ...(includeDemo ? {} : { company: companyFilter }),
+          },
           orderBy: { fitScore: "desc" },
           take: 5,
           include: { company: true },
