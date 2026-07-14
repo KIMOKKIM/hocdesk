@@ -216,9 +216,23 @@ export function ProjectInsightsPanel({
         </div>
 
         {insights.length === 0 ? (
-          <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-            아직 분석 내용이 없습니다. 전체 업데이트를 실행하세요.
-          </p>
+          <div className="space-y-3 rounded-lg border border-dashed p-6">
+            <p className="text-sm text-muted-foreground">
+              아직 분석 내용이 없습니다. 기본 분석을 생성하거나 전체 업데이트를
+              실행하세요.
+            </p>
+            <Button size="sm" disabled={busy} onClick={updateAll}>
+              {pendingKey === "ALL" ? (
+                <Loader2
+                  className="size-4 animate-spin"
+                  data-icon="inline-start"
+                />
+              ) : (
+                <RefreshCw data-icon="inline-start" />
+              )}
+              기본 분석 생성
+            </Button>
+          </div>
         ) : (
           <div className="space-y-4 rounded-lg border p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">

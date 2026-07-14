@@ -2,16 +2,70 @@ import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/format";
 import { CollectionJobStatus } from "@/lib/constants/status";
 import { jobIdFromDiscoveredReason } from "@/lib/collection/duplicate-check";
+import { isDatabaseSetupError } from "@/lib/db/errors";
 
-export async function getCollectionJobsByProject(projectId: string) {
-  const jobs = await prisma.targetCollectionJob.findMany({
-    where: { projectId },
-    orderBy: { createdAt: "desc" },
-  });
+const JOB_BASE_SELECT = {
+  id: true,
+  jobType: true,
+  status: true,
+  searchPlan: true,
+  requestedCount: true,
+  collectedCount: true,
+  acceptedCount: true,
+  duplicateCount: true,
+  rejectedCount: true,
+  errorMessage: true,
+  startedAt: true,
+  completedAt: true,
+  createdAt: true,
+} as const;
 
-  return jobs.map((job) => {
-    const plan = job.searchPlan as { provider?: string; requestedSegments?: string[] };
-    return {
+const JOB_PROGRESS_SELECT = {
+  ...JOB_BASE_SELECT,
+  progressPercent: true,
+  currentStep: true,
+  currentQuery: true,
+  processedQueries: true,
+  totalQueries: true,
+  apiCallCount: true,
+  rawResultCount: true,
+  reviewRequiredCount: true,
+  lastProgressAt: true,
+  lastMessage: true,
+} as const;
+
+type JobRow = {
+  id: string;
+  jobType: string;
+  status: string;
+  searchPlan: unknown;
+  requestedCount: number;
+  collectedCount: number;
+  acceptedCount: number;
+  duplicateCount: number;
+  rejectedCount: number;
+  errorMessage: string | null;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  createdAt: Date;
+  progressPercent?: number | null;
+  currentStep?: string | null;
+  currentQuery?: string | null;
+  processedQueries?: number | null;
+  totalQueries?: number | null;
+  apiCallCount?: number | null;
+  rawResultCount?: number | null;
+  reviewRequiredCount?: number | null;
+  lastProgressAt?: Date | null;
+  lastMessage?: string | null;
+};
+
+function mapJobSummary(job: JobRow) {
+  const plan = job.searchPlan as {
+    provider?: string;
+    requestedSegments?: string[];
+  };
+  return {
     id: job.id,
     jobType: job.jobType,
     status: job.status,
@@ -40,14 +94,91 @@ export async function getCollectionJobsByProject(projectId: string) {
     completedAt: job.completedAt ? formatDateTime(job.completedAt) : null,
     createdAt: formatDateTime(job.createdAt),
   };
-  });
+}
+
+export async function getCollectionJobsByProject(projectId: string) {
+  try {
+    const jobs = await prisma.targetCollectionJob.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
+      select: JOB_PROGRESS_SELECT,
+    });
+    return jobs.map((job) => mapJobSummary(job));
+  } catch (error) {
+    if (!isDatabaseSetupError(error)) throw error;
+    // progress 컬럼 미준비 시 기본 필드만 조회
+    const jobs = await prisma.targetCollectionJob.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
+      select: JOB_BASE_SELECT,
+    });
+    return jobs.map((job) => mapJobSummary(job));
+  }
 }
 
 export async function getCollectionJobDetail(jobId: string) {
-  const job = await prisma.targetCollectionJob.findUnique({
-    where: { id: jobId },
-    include: { project: { select: { id: true, name: true } } },
-  });
+  type JobWithProject = {
+    id: string;
+    projectId: string;
+    jobType: string;
+    status: string;
+    searchPlan: unknown;
+    jobStats: unknown;
+    requestedCount: number;
+    collectedCount: number;
+    acceptedCount: number;
+    duplicateCount: number;
+    rejectedCount: number;
+    errorMessage: string | null;
+    startedAt: Date | null;
+    completedAt: Date | null;
+    createdAt: Date;
+    progressPercent?: number | null;
+    currentStep?: string | null;
+    currentQuery?: string | null;
+    processedQueries?: number | null;
+    totalQueries?: number | null;
+    apiCallCount?: number | null;
+    rawResultCount?: number | null;
+    reviewRequiredCount?: number | null;
+    lastProgressAt?: Date | null;
+    lastMessage?: string | null;
+    project: { id: string; name: string };
+  };
+
+  let job: JobWithProject | null = null;
+
+  try {
+    job = await prisma.targetCollectionJob.findUnique({
+      where: { id: jobId },
+      include: { project: { select: { id: true, name: true } } },
+    });
+  } catch (error) {
+    if (!isDatabaseSetupError(error)) throw error;
+    const base = await prisma.targetCollectionJob.findUnique({
+      where: { id: jobId },
+      select: {
+        ...JOB_BASE_SELECT,
+        projectId: true,
+        jobStats: true,
+        project: { select: { id: true, name: true } },
+      },
+    });
+    if (!base) return null;
+    job = {
+      ...base,
+      progressPercent: null,
+      currentStep: null,
+      currentQuery: null,
+      processedQueries: 0,
+      totalQueries: 0,
+      apiCallCount: 0,
+      rawResultCount: 0,
+      reviewRequiredCount: 0,
+      lastProgressAt: null,
+      lastMessage: null,
+    };
+  }
 
   if (!job) return null;
 
@@ -161,10 +292,20 @@ export async function getCollectionJobDetail(jobId: string) {
 }
 
 export async function getLatestInitialJob(projectId: string) {
-  return prisma.targetCollectionJob.findFirst({
-    where: { projectId, jobType: "INITIAL" },
-    orderBy: { createdAt: "desc" },
-  });
+  try {
+    return await prisma.targetCollectionJob.findFirst({
+      where: { projectId, jobType: "INITIAL" },
+      orderBy: { createdAt: "desc" },
+      select: JOB_PROGRESS_SELECT,
+    });
+  } catch (error) {
+    if (!isDatabaseSetupError(error)) throw error;
+    return prisma.targetCollectionJob.findFirst({
+      where: { projectId, jobType: "INITIAL" },
+      orderBy: { createdAt: "desc" },
+      select: JOB_BASE_SELECT,
+    });
+  }
 }
 
 export async function getCompaniesForJob(jobId: string) {

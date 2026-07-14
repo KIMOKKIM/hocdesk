@@ -1,23 +1,38 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { InitialCollectionPanel } from "@/components/projects/initial-collection-panel";
+import {
+  ProjectDetailIssuePanel,
+  ProjectSectionNotice,
+} from "@/components/projects/project-detail-issue-panel";
 import { ProjectInsightsPanel } from "@/components/projects/project-insights-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DbSetupAlert } from "@/components/ui/db-setup-alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Separator } from "@/components/ui/separator";
-import { getProjectById } from "@/lib/db/projects";
+import { getCollectionPanelStats } from "@/lib/collection/limits";
+import {
+  getProviderDisplayName,
+  getProviderOptions,
+} from "@/lib/collection/providers";
 import {
   getCollectionJobDetail,
   getCollectionJobsByProject,
   getLatestInitialJob,
 } from "@/lib/db/collection-jobs";
-import { getCollectionPanelStats } from "@/lib/collection/limits";
-import { getProviderDisplayName, getProviderOptions } from "@/lib/collection/providers";
-import { getProjectInsights } from "@/lib/project-insights/service";
+import {
+  isProductionEnvironment,
+  resolveDatabaseProvider,
+} from "@/lib/db/database-provider";
+import { getProjectByIdOrSlug } from "@/lib/db/projects";
+import { assessDatabaseReadiness } from "@/lib/db/readiness";
+import { safeQuery } from "@/lib/db/safe-query";
+import { hasTursoEnv } from "@/lib/db/turso-env";
 import { formatKoreanWon } from "@/lib/format";
+import { prisma } from "@/lib/prisma";
+import { getProjectInsightsSafe } from "@/lib/project-insights/service";
 import { ArrowLeft, Building2 } from "lucide-react";
 
 type ProjectDetailPageProps = {
@@ -28,33 +43,173 @@ export async function generateMetadata({
   params,
 }: ProjectDetailPageProps): Promise<Metadata> {
   const { id } = await params;
-  const project = await getProjectById(id);
-  return { title: project?.name ?? "프로젝트 상세" };
+  try {
+    const project = await getProjectByIdOrSlug(id);
+    return { title: project?.name ?? "프로젝트 상세" };
+  } catch {
+    return { title: "프로젝트 상세" };
+  }
+}
+
+function emptyPanelStats() {
+  return {
+    todayCount: 0,
+    pendingReview: 0,
+    lastCollectionAt: null as Date | string | null,
+    lastJobStatus: null as string | null,
+    lastAcceptedCount: 0,
+    lastDuplicateCount: 0,
+    lastRejectedCount: 0,
+  };
 }
 
 export default async function ProjectDetailPage({
   params,
 }: ProjectDetailPageProps) {
-  const { id } = await params;
-  const project = await getProjectById(id);
+  const { id: routeParam } = await params;
+
+  let databaseProvider = "sqlite";
+  try {
+    databaseProvider = resolveDatabaseProvider();
+  } catch {
+    databaseProvider = process.env.DATABASE_PROVIDER?.trim() || "sqlite";
+  }
+  const isProduction = isProductionEnvironment();
+  const hasTursoCredentials = hasTursoEnv();
+
+  const readinessResult = await safeQuery(
+    "readiness",
+    () => assessDatabaseReadiness(prisma),
+    {
+      database: "error" as const,
+      databaseProvider,
+      schemaReady: false,
+      seedReady: false,
+      checks: {
+        projectTable: false,
+        companyTable: false,
+        appSettingTable: false,
+        jinwoongProject: false,
+      },
+    },
+  );
+  const readiness = readinessResult.data;
+
+  const projectResult = await safeQuery(
+    "project",
+    () => getProjectByIdOrSlug(routeParam),
+    null,
+  );
+  const project = projectResult.data;
 
   if (!project) {
-    notFound();
+    if (!readiness.schemaReady) {
+      return (
+        <div className="space-y-6">
+          <PageHeader title="프로젝트 상세" description={routeParam} />
+          <ProjectDetailIssuePanel
+            code="SCHEMA_NOT_READY"
+            message="운영 DB schema가 아직 준비되지 않았습니다. 초기화를 실행한 뒤 다시 열어주세요."
+            showSetup
+            databaseProvider={databaseProvider}
+            isProduction={isProduction}
+            hasTursoCredentials={hasTursoCredentials}
+          />
+        </div>
+      );
+    }
+
+    if (!readiness.seedReady) {
+      return (
+        <div className="space-y-6">
+          <PageHeader title="프로젝트 상세" description={routeParam} />
+          <ProjectDetailIssuePanel
+            code="SEED_NOT_READY"
+            message="진웅산업 기본 데이터가 아직 생성되지 않았습니다. seed를 적용한 뒤 다시 열어주세요."
+            showSetup
+            databaseProvider={databaseProvider}
+            isProduction={isProduction}
+            hasTursoCredentials={hasTursoCredentials}
+          />
+        </div>
+      );
+    }
+
+    if (!projectResult.ok) {
+      return (
+        <div className="space-y-6">
+          <PageHeader title="프로젝트 상세" description={routeParam} />
+          <ProjectDetailIssuePanel
+            code="UNKNOWN"
+            message="프로젝트 상세 정보를 불러오는 중 오류가 발생했습니다. 잠시 후 다시 시도하거나 DB 초기화 상태를 확인하세요."
+            showSetup={databaseProvider === "turso"}
+            databaseProvider={databaseProvider}
+            isProduction={isProduction}
+            hasTursoCredentials={hasTursoCredentials}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <PageHeader title="프로젝트 상세" description={routeParam} />
+        <ProjectDetailIssuePanel
+          code="NOT_FOUND"
+          message={`식별자 “${routeParam}”에 해당하는 프로젝트를 찾을 수 없습니다. 프로젝트 목록에서 다시 선택하세요.`}
+          databaseProvider={databaseProvider}
+          isProduction={isProduction}
+          hasTursoCredentials={hasTursoCredentials}
+        />
+      </div>
+    );
   }
 
-  const [collectionJobs, latestInitialJob, panelStats, insights] =
+  const projectId = project.id;
+
+  const [insightsResult, jobsResult, latestJobResult, panelStatsResult] =
     await Promise.all([
-      getCollectionJobsByProject(id),
-      getLatestInitialJob(id),
-      getCollectionPanelStats(id),
-      getProjectInsights(id),
+      safeQuery("insights", () => getProjectInsightsSafe(projectId), {
+        insights: [],
+        available: false,
+        errorCode: "PROJECT_INSIGHT_TABLE_MISSING",
+      }),
+      safeQuery("collection-jobs", () => getCollectionJobsByProject(projectId), []),
+      safeQuery("latest-initial-job", () => getLatestInitialJob(projectId), null),
+      safeQuery("panel-stats", () => getCollectionPanelStats(projectId), emptyPanelStats()),
     ]);
 
+  const insightsLoad = insightsResult.data;
+  const collectionJobs = jobsResult.data;
+  const latestInitialJob = latestJobResult.data;
+  const panelStats = panelStatsResult.data;
+
+  let latestJobDetail = null;
+  if (latestInitialJob?.id) {
+    const detailResult = await safeQuery(
+      "job-detail",
+      () => getCollectionJobDetail(latestInitialJob.id),
+      null,
+    );
+    latestJobDetail = detailResult.data;
+  }
+
+  let providerName = "KakaoLocalSearchProvider";
+  let providerOptions: ReturnType<typeof getProviderOptions> = [];
+  try {
+    providerName = getProviderDisplayName();
+    providerOptions = getProviderOptions();
+  } catch (error) {
+    console.error(
+      "[project-detail] provider options failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
   const hasCompletedInitial = latestInitialJob?.status === "COMPLETED";
-  const latestJobDetail = latestInitialJob
-    ? await getCollectionJobDetail(latestInitialJob.id)
-    : null;
-  const providerOptions = getProviderOptions();
+  const collectionAvailable = jobsResult.ok && panelStatsResult.ok;
+  const insightsAvailable =
+    insightsResult.ok && insightsLoad.available !== false;
 
   return (
     <div className="space-y-6">
@@ -67,10 +222,14 @@ export default async function ProjectDetailPage({
               <ArrowLeft data-icon="inline-start" />
               목록
             </Button>
-            <Button render={<Link href={`/projects/${id}/search-quality`} />}>
+            <Button
+              render={<Link href={`/projects/${projectId}/search-quality`} />}
+            >
               검색 품질
             </Button>
-            <Button render={<Link href={`/targets?projectId=${project.id}`} />}>
+            <Button
+              render={<Link href={`/targets?projectId=${projectId}`} />}
+            >
               타깃 업체 보기
             </Button>
           </div>
@@ -118,6 +277,14 @@ export default async function ProjectDetailPage({
                 <dt className="text-muted-foreground">등록일</dt>
                 <dd className="font-medium">{project.createdAtLabel}</dd>
               </div>
+              <div>
+                <dt className="text-muted-foreground">지역</dt>
+                <dd className="font-medium">{project.location ?? "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">프로젝트 ID</dt>
+                <dd className="font-mono text-xs">{projectId}</dd>
+              </div>
             </dl>
           </CardContent>
         </Card>
@@ -130,43 +297,88 @@ export default async function ProjectDetailPage({
             <div className="flex justify-between">
               <span className="text-muted-foreground">타깃 업체</span>
               <span className="font-semibold">
-                {project._count.projectCompanies}곳
+                {project._count?.projectCompanies ?? 0}곳
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">이메일</span>
-              <span className="font-semibold">{project._count.outreachs}건</span>
+              <span className="font-semibold">
+                {project._count?.outreachs ?? 0}건
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">일일 활동</span>
               <span className="font-semibold">
-                {project._count.dailyActivities}건
+                {project._count?.dailyActivities ?? 0}건
               </span>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <ProjectInsightsPanel projectId={project.id} initialInsights={insights} />
+      {insightsAvailable ? (
+        <ProjectInsightsPanel
+          projectId={projectId}
+          initialInsights={insightsLoad.insights}
+        />
+      ) : (
+        <div className="space-y-4">
+          <ProjectSectionNotice
+            title="진웅산업 분석"
+            message="진웅산업 분석 테이블이 아직 생성되지 않았습니다. 운영 DB 초기화를 실행하세요."
+            showSetupHint
+          />
+          {databaseProvider === "turso" ? (
+            <DbSetupAlert
+              databaseProvider={databaseProvider}
+              isProduction={isProduction}
+              hasTursoCredentials={hasTursoCredentials}
+            />
+          ) : null}
+        </div>
+      )}
 
-      <InitialCollectionPanel
-        projectId={project.id}
-        projectName={project.name}
-        providerName={getProviderDisplayName()}
-        providerOptions={providerOptions}
-        hasCompletedInitial={hasCompletedInitial}
-        panelStats={panelStats}
-        initialJobs={collectionJobs}
-        initialJobDetail={latestJobDetail}
-      />
+      {collectionAvailable ? (
+        <InitialCollectionPanel
+          projectId={projectId}
+          projectName={project.name}
+          providerName={providerName}
+          providerOptions={providerOptions}
+          hasCompletedInitial={Boolean(hasCompletedInitial)}
+          panelStats={panelStats}
+          initialJobs={collectionJobs}
+          initialJobDetail={latestJobDetail}
+        />
+      ) : (
+        <div className="space-y-4">
+          <ProjectSectionNotice
+            title="타깃 업체 자동수집"
+            message="타깃 수집 작업 테이블을 불러올 수 없습니다. schema에 TargetCollectionJob이 포함되어 있는지 확인하세요."
+            showSetupHint
+          />
+          {databaseProvider === "turso" && insightsAvailable ? (
+            <DbSetupAlert
+              databaseProvider={databaseProvider}
+              isProduction={isProduction}
+              hasTursoCredentials={hasTursoCredentials}
+            />
+          ) : null}
+        </div>
+      )}
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
           <CardTitle>검색 이력</CardTitle>
         </CardHeader>
         <CardContent>
-          {collectionJobs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">수집 작업 이력이 없습니다.</p>
+          {!jobsResult.ok ? (
+            <p className="text-sm text-muted-foreground">
+              수집 이력을 불러올 수 없습니다.
+            </p>
+          ) : collectionJobs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              수집 작업 이력이 없습니다.
+            </p>
           ) : (
             <ul className="divide-y">
               {collectionJobs.slice(0, 8).map((job) => (
@@ -202,9 +414,9 @@ export default async function ProjectDetailPage({
           <CardTitle>상위 타깃 업체</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {project.projectCompanies.length === 0 ? (
+          {!project.projectCompanies || project.projectCompanies.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              등록된 타깃 업체가 없습니다.
+              등록된 타깃 업체가 없습니다. 카카오 실제 업체 검색을 실행하세요.
             </p>
           ) : (
             project.projectCompanies.map((target) => (

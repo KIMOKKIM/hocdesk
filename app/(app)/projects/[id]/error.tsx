@@ -5,18 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DbSetupAlert } from "@/components/ui/db-setup-alert";
 
-export default function AppError({
+export default function ProjectDetailError({
   error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const isProduction = process.env.NODE_ENV === "production";
-
   return (
-    <div className="space-y-4 p-6">
-      <Card className="w-full border-destructive/40 shadow-sm">
+    <div className="space-y-4">
+      <Card className="border-destructive/40 shadow-sm">
         <CardHeader>
           <CardTitle className="text-base text-destructive">
             프로젝트 상세 정보를 불러오는 중 오류가 발생했습니다.
@@ -24,9 +22,8 @@ export default function AppError({
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <p className="text-muted-foreground">
-            데이터베이스 schema/seed가 아직 적용되지 않았거나, 일부 테이블(예:
-            ProjectInsight)이 준비되지 않았을 수 있습니다. 아래 초기화를 실행한
-            뒤 다시 시도하세요.
+            ProjectInsight 등 일부 테이블이 아직 없거나 조회 중 오류가 발생했을
+            수 있습니다. 운영 DB 초기화 후 다시 열어주세요.
           </p>
           {error.digest ? (
             <p className="font-mono text-xs text-muted-foreground">
@@ -37,23 +34,16 @@ export default function AppError({
             <Button type="button" onClick={() => reset()}>
               다시 시도
             </Button>
-            <Button variant="outline" render={<Link href="/dashboard" />}>
-              대시보드로 이동
-            </Button>
             <Button variant="outline" render={<Link href="/projects" />}>
               프로젝트 목록으로 이동
+            </Button>
+            <Button variant="outline" render={<Link href="/dashboard" />}>
+              대시보드로 이동
             </Button>
           </div>
         </CardContent>
       </Card>
-
-      {isProduction ? (
-        <DbSetupAlert
-          databaseProvider="turso"
-          isProduction
-          hasTursoCredentials
-        />
-      ) : null}
+      <DbSetupAlert databaseProvider="turso" isProduction hasTursoCredentials />
     </div>
   );
 }

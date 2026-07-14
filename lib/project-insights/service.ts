@@ -29,27 +29,70 @@ export function parseInsightCategory(
 }
 
 export async function ensureProjectInsights(projectId: string) {
-  const count = await prisma.projectInsight.count({ where: { projectId } });
-  if (count === 0) {
-    await seedProjectInsights(prisma, projectId);
+  try {
+    const count = await prisma.projectInsight.count({ where: { projectId } });
+    if (count === 0) {
+      await seedProjectInsights(prisma, projectId);
+    }
+    return { ok: true as const };
+  } catch (error) {
+    console.error(
+      "[project-insights] ensure failed:",
+      error instanceof Error ? error.message : error,
+    );
+    return { ok: false as const, error };
   }
 }
 
-export async function getProjectInsights(projectId: string) {
-  await ensureProjectInsights(projectId);
+export type ProjectInsightsLoadResult = {
+  insights: ReturnType<typeof mapInsight>[];
+  available: boolean;
+  errorCode: string | null;
+};
 
-  const rows = await prisma.projectInsight.findMany({
-    where: { projectId },
-    orderBy: { category: "asc" },
-  });
+export async function getProjectInsights(
+  projectId: string,
+): Promise<ReturnType<typeof mapInsight>[]> {
+  const result = await getProjectInsightsSafe(projectId);
+  return result.insights;
+}
 
-  const ordered = PROJECT_INSIGHT_CATEGORIES.map((category) => {
-    const row = rows.find((item) => item.category === category);
-    if (!row) return null;
-    return mapInsight(row);
-  }).filter(Boolean);
+export async function getProjectInsightsSafe(
+  projectId: string,
+): Promise<ProjectInsightsLoadResult> {
+  const ensured = await ensureProjectInsights(projectId);
+  if (!ensured.ok) {
+    return {
+      insights: [],
+      available: false,
+      errorCode: "PROJECT_INSIGHT_TABLE_MISSING",
+    };
+  }
 
-  return ordered as ReturnType<typeof mapInsight>[];
+  try {
+    const rows = await prisma.projectInsight.findMany({
+      where: { projectId },
+      orderBy: { category: "asc" },
+    });
+
+    const ordered = PROJECT_INSIGHT_CATEGORIES.map((category) => {
+      const row = rows.find((item) => item.category === category);
+      if (!row) return null;
+      return mapInsight(row);
+    }).filter(Boolean) as ReturnType<typeof mapInsight>[];
+
+    return { insights: ordered, available: true, errorCode: null };
+  } catch (error) {
+    console.error(
+      "[project-insights] load failed:",
+      error instanceof Error ? error.message : error,
+    );
+    return {
+      insights: [],
+      available: false,
+      errorCode: "PROJECT_INSIGHT_QUERY_FAILED",
+    };
+  }
 }
 
 function mapInsight(row: {
