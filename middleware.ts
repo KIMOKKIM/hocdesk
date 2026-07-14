@@ -51,6 +51,7 @@ const PROTECTED_PREFIXES = [
   "/settings",
   "/collection-jobs",
   "/proposals",
+  "/jinwoong",
 ];
 
 const PUBLIC_API_PREFIXES = [
@@ -165,5 +166,7 @@ export const config = {
     "/collection-jobs/:path*",
     "/proposals",
     "/proposals/:path*",
+    "/jinwoong",
+    "/jinwoong/:path*",
   ],
 };

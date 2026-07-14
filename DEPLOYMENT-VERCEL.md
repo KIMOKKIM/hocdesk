@@ -41,6 +41,7 @@ Vercel Dashboard → Project → Settings → Environment Variables
 | `AI_PROVIDER` | `rules` | 규칙 기반 분석 |
 | `EMAIL_PROVIDER` | `console` | 실발송 없음 |
 | `INCLUDE_DEMO_DATA` | `false` | 운영 데모 데이터 제외 |
+| `ALLOW_DEMO_PROVIDER_IN_PRODUCTION` | `false` | 운영에서 데모 검색 차단 |
 | `NODE_ENV` | `production` | Vercel 기본값 |
 
 ```
@@ -57,6 +58,7 @@ KAKAO_REST_API_KEY=
 AI_PROVIDER=rules
 EMAIL_PROVIDER=console
 INCLUDE_DEMO_DATA=false
+ALLOW_DEMO_PROVIDER_IN_PRODUCTION=false
 ```
 
 - `TURSO_*`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `KAKAO_REST_API_KEY`는 **런타임**에 검증됩니다. 빌드 단계에서 미설정이어도 `next build`는 통과합니다.

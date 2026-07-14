@@ -95,9 +95,9 @@ export default async function TargetsPage({ searchParams }: TargetsPageProps) {
         <CardContent>
           {targets.length === 0 ? (
             <EmptyState
-              title="조건에 맞는 타깃이 없습니다"
-              description="필터를 변경하거나 새 타깃 업체를 등록하세요."
-              actionLabel="타깃 추가"
+              title="아직 실제 타깃 업체가 없습니다"
+              description="아직 실제 타깃 업체가 없습니다. 프로젝트 상세에서 카카오 실제 업체 검색을 실행하세요."
+              actionLabel="프로젝트로 이동"
             />
           ) : (
             <TargetsTable targets={targets} />

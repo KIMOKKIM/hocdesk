@@ -9,6 +9,10 @@ import { isKakaoApiConfigured } from "@/lib/collection/providers/kakao-local-cli
 import { KakaoLocalSearchProvider } from "@/lib/collection/providers/kakao-local-search-provider";
 import { PublicDataProvider } from "@/lib/collection/providers/public-data-provider";
 import { WebSearchProvider } from "@/lib/collection/providers/web-search-provider";
+import {
+  assertDemoProviderAllowed,
+  isAllowDemoProviderInProduction,
+} from "@/lib/demo-filter";
 
 const SUPPORTED_PROVIDERS: SearchProviderName[] = [
   "demo",
@@ -18,10 +22,18 @@ const SUPPORTED_PROVIDERS: SearchProviderName[] = [
   "public",
 ];
 
+function defaultSearchProvider(): SearchProviderName {
+  const env = process.env.TARGET_SEARCH_PROVIDER?.trim().toLowerCase();
+  if (env && SUPPORTED_PROVIDERS.includes(env as SearchProviderName)) {
+    return env as SearchProviderName;
+  }
+  return process.env.NODE_ENV === "production" ? "kakao" : "demo";
+}
+
 export function resolveSearchProviderName(
   override?: string | null,
 ): SearchProviderName {
-  const raw = (override ?? process.env.TARGET_SEARCH_PROVIDER ?? "demo").toLowerCase();
+  const raw = (override ?? defaultSearchProvider()).toLowerCase();
   if (!SUPPORTED_PROVIDERS.includes(raw as SearchProviderName)) {
     throw new ApiError(
       `지원하지 않는 TARGET_SEARCH_PROVIDER: "${raw}". demo, kakao, composite 중 하나를 사용하세요.`,
@@ -36,6 +48,20 @@ export function getTargetSearchProvider(
   jobId?: string,
 ): TargetSearchProvider {
   const providerName = resolveSearchProviderName(override);
+
+  if (providerName === "demo") {
+    try {
+      assertDemoProviderAllowed();
+    } catch (error) {
+      throw new ApiError(
+        error instanceof Error
+          ? error.message
+          : "운영환경에서는 데모 검색을 사용할 수 없습니다. Kakao 실제 업체 검색을 사용하세요.",
+        403,
+        "DEMO_PROVIDER_BLOCKED",
+      );
+    }
+  }
 
   switch (providerName) {
     case "web":
@@ -94,14 +120,10 @@ export function getProviderDisplayName(override?: string | null) {
 
 export function getProviderOptions() {
   const kakaoConfigured = isKakaoApiConfigured();
+  const demoAllowed =
+    process.env.NODE_ENV !== "production" || isAllowDemoProviderInProduction();
+
   return [
-    {
-      value: "demo" as const,
-      label: "데모 검색",
-      description:
-        "기능 검증용 가상 업체를 생성합니다.",
-      enabled: true,
-    },
     {
       value: "kakao" as const,
       label: "카카오 실제 업체 검색",
@@ -110,7 +132,7 @@ export function getProviderOptions() {
       enabled: kakaoConfigured,
       disabledReason: kakaoConfigured
         ? undefined
-        : "KAKAO_REST_API_KEY를 .env에 입력한 후 개발 서버를 재시작하세요.",
+        : "KAKAO_REST_API_KEY가 필요합니다.",
     },
     {
       value: "composite" as const,
@@ -121,6 +143,17 @@ export function getProviderOptions() {
       disabledReason: kakaoConfigured
         ? undefined
         : "KAKAO_REST_API_KEY가 필요합니다.",
+    },
+    {
+      value: "demo" as const,
+      label: "데모 검색 (개발용)",
+      description: demoAllowed
+        ? "기능 검증용 가상 업체를 생성합니다. 운영에서는 사용하지 마세요."
+        : "운영환경에서는 데모 검색을 사용할 수 없습니다.",
+      enabled: demoAllowed,
+      disabledReason: demoAllowed
+        ? undefined
+        : "운영환경에서는 Kakao 실제 업체 검색을 사용하세요.",
     },
   ];
 }

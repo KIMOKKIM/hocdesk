@@ -232,9 +232,10 @@ export function DbSetupAlert({
                 운영 DB 초기화를 실행하시겠습니까?
               </h2>
               <p className="mt-3 text-sm text-muted-foreground">
-                Turso DB에 필요한 테이블을 생성하고 진웅산업 기본 프로젝트를
-                seed합니다. 기존 데이터는 삭제하지 않으며, 반복 실행해도 중복
-                생성되지 않도록 처리합니다.
+                Turso DB에 필요한 테이블을 생성하고 진웅산업 기본 프로젝트와
+                운영 설정만 생성합니다. 데모 업체는 생성하지 않습니다. 기존
+                데이터는 삭제하지 않으며, 반복 실행해도 중복 생성되지 않도록
+                처리합니다.
               </p>
               {isProduction ? (
                 <p className="mt-2 text-sm font-medium text-destructive">
@@ -278,7 +279,14 @@ export function DbSetupAlert({
         ) : null}
 
         <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-          <li>운영 seed는 데모 업체를 기본으로 넣지 않습니다.</li>
+          <li>
+            진웅산업 기본 프로젝트와 운영 설정만 생성합니다. 데모 업체는
+            생성하지 않습니다.
+          </li>
+          <li>
+            초기화 후 타깃 업체는 0개일 수 있습니다. 프로젝트 상세에서 카카오
+            실제 업체 검색을 실행하세요.
+          </li>
           <li>초기화는 관리자 세션이 있을 때만 실행됩니다.</li>
           <li>CLI 대안: npm run turso:setup</li>
         </ul>

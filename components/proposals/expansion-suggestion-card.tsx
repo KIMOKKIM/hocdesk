@@ -42,7 +42,7 @@ export function ExpansionSuggestionCard({
   const [targetCount, setTargetCount] = useState(
     suggestion.proposedTargetCount || 20,
   );
-  const [selectedProvider, setSelectedProvider] = useState<"demo" | "kakao" | "composite">("demo");
+  const [selectedProvider, setSelectedProvider] = useState<"demo" | "kakao" | "composite">("kakao");
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -192,9 +192,9 @@ export function ExpansionSuggestionCard({
                 }
                 className="flex h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
               >
-                <option value="demo">데모 검색</option>
                 <option value="kakao">카카오 실제 업체 검색</option>
                 <option value="composite">복합 검색</option>
+                <option value="demo">데모 검색 (개발용)</option>
               </select>
             </div>
             <div className="space-y-2">

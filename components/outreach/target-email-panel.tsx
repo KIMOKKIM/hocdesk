@@ -27,6 +27,7 @@ export type OutreachItem = {
 type TargetEmailPanelProps = {
   projectCompanyId: string;
   canGenerateEmail?: boolean;
+  hasEmail?: boolean;
   initialOutreachs: OutreachItem[];
 };
 
@@ -62,6 +63,7 @@ async function apiDelete(path: string) {
 export function TargetEmailPanel({
   projectCompanyId,
   canGenerateEmail = true,
+  hasEmail = true,
   initialOutreachs,
 }: TargetEmailPanelProps) {
   const router = useRouter();
@@ -73,6 +75,8 @@ export function TargetEmailPanel({
     body: string;
     warnings: string[];
   } | null>(null);
+
+  const canCreateDraft = canGenerateEmail && hasEmail;
 
   const activeStatuses = new Set<string>([
     OutreachStatus.DRAFT,
@@ -137,7 +141,7 @@ export function TargetEmailPanel({
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
-            disabled={isPending || !canGenerateEmail}
+            disabled={isPending || !canCreateDraft}
             onClick={() =>
               run(async () => {
                 const data = await apiPost("/api/outreach/generate", {
@@ -154,7 +158,12 @@ export function TargetEmailPanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!canGenerateEmail ? (
+        {!hasEmail ? (
+          <p className="text-sm text-muted-foreground">
+            이메일 없음 — 이메일 초안 생성이 비활성입니다. 정보 보강 후 다시
+            시도하세요.
+          </p>
+        ) : !canGenerateEmail ? (
           <p className="text-sm text-muted-foreground">
             연락 준비 완료(CONTACT_READY) 상태에서만 이메일 초안을 생성할 수
             있습니다.

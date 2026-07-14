@@ -205,6 +205,12 @@ export async function getTargets(filters: TargetFilters = {}) {
       target.company.companyName,
       latestSource?.sourceType,
       latestSource?.rawMetadata,
+      {
+        provider: latestSource?.provider,
+        email: target.company.generalEmail,
+        website: target.company.website,
+        websiteDomain: target.company.websiteDomain,
+      },
     );
 
     return {
@@ -239,6 +245,7 @@ export async function getTargets(filters: TargetFilters = {}) {
       hasEmail,
       hasVerifiedEmail,
       hasPhone: Boolean(target.company.mainPhone),
+      mainPhone: target.company.mainPhone ?? null,
       hasWebsite: Boolean(target.company.website),
     };
   })

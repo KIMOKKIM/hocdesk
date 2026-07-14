@@ -21,20 +21,17 @@ type TargetRow = {
   projectName: string;
   latestSourceType: string | null;
   latestSourceLabel?: string | null;
+  latestSourceConfidenceLabel?: string | null;
   latestCollectedAt: string | null;
   isDemo?: boolean;
   hasContact: boolean;
   hasEmail: boolean;
   hasPhone?: boolean;
+  mainPhone?: string | null;
   hasWebsite?: boolean;
 };
 
 const BULK_MAX = 30;
-
-function gradeVariant(grade: string) {
-  if (grade === "A") return "default" as const;
-  return "secondary" as const;
-}
 
 async function bulkPatch(ids: string[], status: string) {
   const response = await fetch(
@@ -197,18 +194,20 @@ export function TargetsTable({ targets }: { targets: TargetRow[] }) {
       {message ? <p className="text-sm text-primary">{message}</p> : null}
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1100px] text-sm">
+        <table className="w-full min-w-[1280px] text-sm">
           <thead>
             <tr className="border-b text-left text-muted-foreground">
               <th className="pb-3 pr-3 font-medium">선택</th>
+              <th className="pb-3 font-medium">구분</th>
               <th className="pb-3 font-medium">업체명</th>
-              <th className="pb-3 font-medium">등급</th>
               <th className="pb-3 font-medium">업종</th>
               <th className="pb-3 font-medium">지역</th>
-              <th className="pb-3 font-medium">적합도</th>
+              <th className="pb-3 font-medium">전화번호</th>
               <th className="pb-3 font-medium">출처</th>
-              <th className="pb-3 font-medium">수집일</th>
-              <th className="pb-3 font-medium">상태</th>
+              <th className="pb-3 font-medium">신뢰도</th>
+              <th className="pb-3 font-medium">검토상태</th>
+              <th className="pb-3 font-medium">적합도</th>
+              <th className="pb-3 font-medium">발견일</th>
             </tr>
           </thead>
           <tbody>
@@ -222,29 +221,25 @@ export function TargetsTable({ targets }: { targets: TargetRow[] }) {
                   />
                 </td>
                 <td className="py-3">
+                  {target.isDemo ? (
+                    <Badge variant="outline" className="text-xs">
+                      데모
+                    </Badge>
+                  ) : (
+                    <Badge className="text-xs">실제</Badge>
+                  )}
+                </td>
+                <td className="py-3">
                   <Link
                     href={`/targets/${target.id}`}
                     className="font-medium text-primary hover:underline"
                   >
                     {target.companyName}
                   </Link>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {target.isDemo ? (
-                      <Badge variant="outline" className="text-xs">
-                        데모
-                      </Badge>
-                    ) : (
-                      <Badge className="text-xs">실제</Badge>
-                    )}
-                  </div>
                   <p className="text-xs text-muted-foreground">
                     {target.projectName}
+                    {!target.hasEmail ? " · 이메일 없음" : ""}
                   </p>
-                </td>
-                <td className="py-3">
-                  <Badge variant={gradeVariant(target.targetGrade)}>
-                    {target.targetGrade}등급
-                  </Badge>
                 </td>
                 <td className="py-3">
                   {target.industryGroup}
@@ -255,15 +250,19 @@ export function TargetsTable({ targets }: { targets: TargetRow[] }) {
                   ) : null}
                 </td>
                 <td className="py-3">{target.region ?? "-"}</td>
-                <td className="py-3 font-medium">{target.fitScore}점</td>
+                <td className="py-3">{target.mainPhone ?? (target.hasPhone ? "있음" : "-")}</td>
                 <td className="py-3">
                   {target.latestSourceLabel ?? target.latestSourceType ?? "-"}
                 </td>
-                <td className="py-3 text-muted-foreground">
-                  {target.latestCollectedAt ?? "-"}
+                <td className="py-3">
+                  {target.latestSourceConfidenceLabel ?? "-"}
                 </td>
                 <td className="py-3">
                   <Badge variant="outline">{target.reviewStatusLabel}</Badge>
+                </td>
+                <td className="py-3 font-medium">{target.fitScore}점</td>
+                <td className="py-3 text-muted-foreground">
+                  {target.latestCollectedAt ?? "-"}
                 </td>
               </tr>
             ))}

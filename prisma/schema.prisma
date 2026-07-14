@@ -306,3 +306,190 @@ model SuppressionList {
   optedOutAt  DateTime @default(now())
   source      String?
 }
+
+// ── Jinwww 매각 프로젝트 전용 MVP ──────────────────────────────────────────
+
+model JinwoongProject {
+  id            String   @id @default(cuid())
+  projectName   String
+  companyName   String
+  description   String?
+  status        String   @default("ACTIVE")
+  progressSteps Json?
+  lastUpdatedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  companyProfile JinwoongCompanyProfile?
+  analyses       JinwoongCompanyAnalysis[]
+  targets        JinwoongTarget[]
+  automationLogs JinwoongAutomationLog[]
+}
+
+model JinwoongCompanyProfile {
+  id                 String   @id @default(cuid())
+  projectId          String   @unique
+  basicInfo          Json?
+  businessAnalysis   Json?
+  financialAnalysis  Json?
+  salePoints         Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  project JinwoongProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model JinwoongCompanyAnalysis {
+  id          String    @id @default(cuid())
+  projectId   String
+  category    String
+  title       String
+  content     String
+  sourceUrl   String?
+  sourceName  String?
+  publishedAt DateTime?
+  analyzedAt  DateTime?
+  importance  String?
+  sentiment   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project JinwoongProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, category])
+}
+
+model JinwoongTarget {
+  id                     String    @id @default(cuid())
+  projectId              String
+  targetStage            Int
+  companyName            String
+  companyNameEn          String?
+  country                String    @default("KR")
+  website                String?
+  websiteDomain          String?
+  industry               String?
+  companySize            String?
+  revenue                String?
+  operatingProfit        String?
+  employeeCount          Int?
+  headquartersAddress    String?
+  foundedYear            Int?
+  representativeName     String?
+  mainBusiness           String?
+  mainProducts           String?
+  isListed               Boolean   @default(false)
+  parentCompany          String?
+  targetReason           String?
+  acquisitionProbability String?
+  aiScore                Int       @default(0)
+  aiGrade                String    @default("D")
+  manualScore            Int?
+  manualScoreReason      String?
+  manualScoreAt          DateTime?
+  status                 String    @default("NEW")
+  priority               Int       @default(0)
+  hasContact             Boolean   @default(false)
+  hasProposal            Boolean   @default(false)
+  sourceUrl              String?
+  lastSearchedAt         DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  project   JinwoongProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  analysis  JinwoongTargetAnalysis?
+  contacts  JinwoongContact[]
+  proposals JinwoongProposal[]
+
+  @@index([projectId, targetStage])
+  @@index([projectId, status])
+  @@index([websiteDomain])
+  @@index([companyName])
+}
+
+model JinwoongTargetAnalysis {
+  id                 String   @id @default(cuid())
+  targetId           String   @unique
+  businessSynergy    Int      @default(0)
+  productSynergy     Int      @default(0)
+  technologySynergy  Int      @default(0)
+  customerSynergy    Int      @default(0)
+  marketSynergy      Int      @default(0)
+  financialCapacity  Int      @default(0)
+  acquisitionHistory Int      @default(0)
+  acquisitionNeed    Int      @default(0)
+  contactability     Int      @default(0)
+  dealProbability    Int      @default(0)
+  riskFactors        String?
+  approachStrategy   String?
+  keySynergy         String?
+  acquisitionLogic   String?
+  concerns           String?
+  followUpItems      String?
+  totalScore         Int      @default(0)
+  grade              String   @default("D")
+  aiSummary          String?
+  analyzedAt         DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  target JinwoongTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+}
+
+model JinwoongContact {
+  id             String    @id @default(cuid())
+  targetId       String
+  name           String
+  position       String?
+  department     String?
+  contactType    String?
+  email          String?
+  phone          String?
+  profileUrl     String?
+  sourceUrl      String?
+  reliability    String?
+  contactStatus  String    @default("UNKNOWN")
+  lastVerifiedAt DateTime?
+  memo           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  target JinwoongTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([targetId])
+}
+
+model JinwoongProposal {
+  id          String   @id @default(cuid())
+  targetId    String
+  proposalType String
+  title       String
+  content     String
+  version     Int      @default(1)
+  status      String   @default("DRAFT")
+  generatedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  target JinwoongTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([targetId, proposalType])
+}
+
+model JinwoongAutomationLog {
+  id                 String    @id @default(cuid())
+  projectId          String?
+  jobType            String
+  status             String
+  startedAt          DateTime
+  completedAt        DateTime?
+  newTargetCount     Int       @default(0)
+  updatedTargetCount Int       @default(0)
+  errorMessage       String?
+  resultSummary      String?
+  createdAt          DateTime  @default(now())
+
+  project JinwoongProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([jobType, startedAt])
+}

@@ -25,6 +25,8 @@ export async function getDashboardStats(includeDemoParam?: string) {
     totalTargets,
     pendingReview,
     contactReady,
+    discoveredCandidates,
+    collectionJobs,
     todayActivities,
     outreachStats,
   ] = await Promise.all([
@@ -42,20 +44,48 @@ export async function getDashboardStats(includeDemoParam?: string) {
         ...companyFilter,
       },
     }),
+    prisma.discoveredCandidate.findMany({
+      select: { companyName: true, provider: true },
+    }),
+    prisma.targetCollectionJob.findMany({
+      select: { jobType: true, searchPlan: true },
+    }),
     prisma.dailyActivity.count({
       where: { activityDate: { gte: today } },
     }),
-    getOutreachStats(),
+    getOutreachStats(undefined, includeDemoParam),
   ]);
 
+  const searchCandidates = includeDemo
+    ? discoveredCandidates.length
+    : discoveredCandidates.filter(
+        (c) =>
+          c.provider !== "demo" && !c.companyName.includes("데모"),
+      ).length;
+
+  const kakaoJobs = collectionJobs.filter((job) => {
+    const plan =
+      job.searchPlan && typeof job.searchPlan === "object"
+        ? (job.searchPlan as { provider?: string })
+        : {};
+    const provider = plan.provider ?? "";
+    if (!includeDemo && (provider === "demo" || job.jobType.includes("DEMO"))) {
+      return false;
+    }
+    return provider === "kakao" || provider.includes("kakao");
+  }).length;
+
   return [
-    { label: "검토 대기 업체", value: pendingReview, change: "담당자 검토 필요" },
+    { label: "실제 타깃 업체", value: totalTargets, change: includeDemo ? "전체" : "데모 제외" },
+    { label: "검토대기 실제 업체", value: pendingReview, change: "담당자 검토 필요" },
     {
-      label: "연락 준비 완료",
+      label: "연락준비 실제 업체",
       value: contactReady,
       change: "이메일 초안 생성 가능",
     },
-    { label: "이메일 초안", value: outreachStats.draft, change: "작성·검토 중" },
+    { label: "실제 검색 후보", value: searchCandidates, change: "DiscoveredCandidate" },
+    { label: "실제 Kakao 수집 작업", value: kakaoJobs, change: "TargetCollectionJob" },
+    { label: "실제 업체 이메일 초안", value: outreachStats.draft, change: "작성·검토 중" },
     { label: "승인 대기", value: outreachStats.pending, change: "팀장 승인 대기" },
     { label: "승인 완료", value: outreachStats.approved, change: "발송 가능" },
     { label: "오늘 발송", value: outreachStats.todaySent, change: "ConsoleProvider" },
@@ -68,7 +98,6 @@ export async function getDashboardStats(includeDemoParam?: string) {
     },
     { label: "수신거부", value: outreachStats.suppressed, change: "SuppressionList" },
     { label: "오늘 활동", value: todayActivities, change: "일일 업무" },
-    { label: "전체 타깃", value: totalTargets, change: "제외 미포함" },
   ];
 }
 

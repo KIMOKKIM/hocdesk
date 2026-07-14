@@ -139,6 +139,18 @@ export function SettingsForm({
               </p>
             </div>
           </div>
+          {searchProviderStatus.provider === "demo" ? (
+            <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+              현재 Provider가 데모입니다. 운영에서는 Kakao 실제 업체 검색을
+              사용하세요. (TARGET_SEARCH_PROVIDER=kakao)
+            </p>
+          ) : null}
+          {!searchProviderStatus.apiKeyPresent ? (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive">
+              Kakao API 키가 없어 실제 업체 검색을 실행할 수 없습니다.
+              KAKAO_REST_API_KEY를 설정하세요.
+            </p>
+          ) : null}
           <p className="text-muted-foreground">
             일일 신규 {searchProviderStatus.limits.dailyNewCompanies}건 · 검토대기
             한도 {searchProviderStatus.limits.maxPendingReview}건 · 작업당 검색어{" "}

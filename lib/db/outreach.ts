@@ -22,8 +22,15 @@ function startOfToday() {
   return d;
 }
 
-export async function getOutreachStats(projectId?: string) {
-  const where = projectId ? { projectId } : {};
+export async function getOutreachStats(
+  projectId?: string,
+  includeDemoParam?: string,
+) {
+  const includeDemo = resolveIncludeDemo(includeDemoParam);
+  const where = {
+    ...(projectId ? { projectId } : {}),
+    ...(includeDemo ? {} : { company: demoCompanyExcludeWhere() }),
+  };
 
   const [approvalGroups, statusGroups, todaySent, scheduled, nextAction, suppressed] =
     await Promise.all([

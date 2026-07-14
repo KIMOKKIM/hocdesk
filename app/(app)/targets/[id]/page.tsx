@@ -287,6 +287,7 @@ export default async function TargetDetailPage({
       <TargetEmailPanel
         projectCompanyId={id}
         canGenerateEmail={isContactReadyStatus(target.reviewStatus)}
+        hasEmail={target.hasEmail}
         initialOutreachs={target.outreachs.map((o) => ({
           id: o.id,
           subject: o.subject,

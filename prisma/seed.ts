@@ -321,6 +321,10 @@ const demoTargets: DemoTarget[] = [
 ];
 
 async function main() {
+  const includeDemo =
+    process.argv.includes("--include-demo") ||
+    process.env.INCLUDE_DEMO_DATA?.trim().toLowerCase() === "true";
+
   const project = await prisma.project.upsert({
     where: { id: DEMO_PROJECT_ID },
     update: {
@@ -353,6 +357,35 @@ async function main() {
       desiredClosingDate: new Date("2026-12-31"),
     },
   });
+
+  await prisma.appSetting.upsert({
+    where: { key: "sender_profile" },
+    update: {},
+    create: {
+      key: "sender_profile",
+      value: {
+        senderName: process.env.DEFAULT_SENDER_NAME ?? "",
+        companyName: "진웅산업",
+        jobTitle: "",
+        phone: process.env.DEFAULT_SENDER_PHONE ?? "",
+        email: process.env.DEFAULT_SENDER_EMAIL ?? "",
+        introText: "",
+        signature: "",
+        unsubscribeNotice:
+          "본 메일은 정보 제공 목적으로 발송되었습니다. 수신을 원치 않으시면 회신으로 알려주세요.",
+      },
+    },
+  });
+
+  if (!includeDemo) {
+    console.log("Seed completed (operational only — demo excluded):");
+    console.log(`  Projects: ${await prisma.project.count()}`);
+    console.log(`  Companies: ${await prisma.company.count()}`);
+    console.log("  Tip: 데모 업체 포함 시 npm run db:seed -- --include-demo");
+    return;
+  }
+
+  console.log("데모 업체 seed 포함 (--include-demo / INCLUDE_DEMO_DATA=true)");
 
   const seededCompanyIds: string[] = [];
 
@@ -571,6 +604,10 @@ async function main() {
   console.log(
     `  TargetExpansionSuggestions: ${await prisma.targetExpansionSuggestion.count()}`,
   );
+
+  const { seedJinwoongMvp } = await import("../lib/jinwoong/seed");
+  await seedJinwoongMvp(prisma);
+  console.log(`  JinwoongTargets: ${await prisma.jinwoongTarget.count()}`);
 }
 
 main()

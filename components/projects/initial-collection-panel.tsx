@@ -113,11 +113,19 @@ export function InitialCollectionPanel({
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [requestedCount, setRequestedCount] = useState(DEFAULT_REQUEST_COUNT);
-  const [selectedProvider, setSelectedProvider] = useState<"demo" | "kakao" | "composite">("demo");
+  const [selectedProvider, setSelectedProvider] = useState<"demo" | "kakao" | "composite">(
+    () => {
+      const preferred =
+        providerOptions.find((o) => o.value === "kakao" && o.enabled) ??
+        providerOptions.find((o) => o.enabled);
+      return preferred?.value ?? "kakao";
+    },
+  );
   const [executionMode, setExecutionMode] = useState<"preview" | "register">("preview");
   const [importMode, setImportMode] = useState<"review" | "fast">("review");
   const [keywordWarnings, setKeywordWarnings] = useState<KeywordWarning[]>([]);
   const [forceDuplicateSearch, setForceDuplicateSearch] = useState(false);
+  const [confirmRegister, setConfirmRegister] = useState(false);
 
   const estimatedCount = estimateInitialCollectionCount(requestedCount);
 
@@ -134,6 +142,9 @@ export function InitialCollectionPanel({
   }, []);
 
   function openConfirmDialog() {
+    setExecutionMode("preview");
+    setImportMode("review");
+    setConfirmRegister(false);
     setShowConfirm(true);
     void loadKeywordWarnings();
   }
@@ -331,7 +342,12 @@ export function InitialCollectionPanel({
         {showConfirm ? (
           <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
             <p className="text-sm font-medium">
-              {projectName} 프로젝트의 초기 타깃 업체를 수집합니다.
+              {projectName} — 카카오 실제 업체 검색
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              카카오 실제 업체 검색 결과를 기반으로 타깃 후보를 수집합니다.
+              검색 결과는 검토대기 상태로 등록되며, 자동 이메일 발송 대상이
+              되지 않습니다.
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
               신규 등록은 오늘 최대 {COLLECTION_LIMITS.maxNewCompaniesPerDay}개로 제한됩니다.
@@ -347,10 +363,13 @@ export function InitialCollectionPanel({
                   type="radio"
                   name="executionMode"
                   checked={executionMode === "preview"}
-                  onChange={() => setExecutionMode("preview")}
+                  onChange={() => {
+                    setExecutionMode("preview");
+                    setConfirmRegister(false);
+                  }}
                 />
                 <span>
-                  <span className="font-medium">미리보기만</span>
+                  <span className="font-medium">미리보기만 (권장)</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
                     검색·검증·중복검사만 수행. Company DB 등록 없음.
                   </span>
@@ -366,11 +385,25 @@ export function InitialCollectionPanel({
                 <span>
                   <span className="font-medium">DB에 등록</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    승인된 후보만 Company에 등록 (검토 모드 기본).
+                    후보 확인 후 등록. 아래에서 확인 체크가 필요합니다.
                   </span>
                 </span>
               </label>
             </div>
+            {executionMode === "register" ? (
+              <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={confirmRegister}
+                  onChange={(e) => setConfirmRegister(e.target.checked)}
+                />
+                <span>
+                  검색 후보를 DB에 등록합니다. 등록된 업체는 NEW/PENDING
+                  상태이며 자동 이메일 발송 대상이 되지 않습니다.
+                </span>
+              </label>
+            ) : null}
             {selectedProvider !== "demo" ? (
               <div className="mt-4 space-y-2">
                 <p className="text-sm font-medium">등록 모드</p>
@@ -384,7 +417,7 @@ export function InitialCollectionPanel({
                   <span>
                     <span className="font-medium">검토 모드 (기본)</span>
                     <span className="mt-1 block text-xs text-muted-foreground">
-                      후보를 SearchCandidate에 저장 후 관리자 승인.
+                      후보를 검토 목록에 저장 후 관리자 승인.
                     </span>
                   </span>
                 </label>
@@ -470,7 +503,8 @@ export function InitialCollectionPanel({
                 size="sm"
                 disabled={
                   isRunning ||
-                  (keywordWarnings.length > 0 && !forceDuplicateSearch)
+                  (keywordWarnings.length > 0 && !forceDuplicateSearch) ||
+                  (executionMode === "register" && !confirmRegister)
                 }
                 onClick={handleRun}
               >
