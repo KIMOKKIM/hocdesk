@@ -82,7 +82,7 @@ export async function getActiveInitialJob(projectId: string) {
     where: {
       projectId,
       jobType: "INITIAL",
-      status: { in: ["QUEUED", "RUNNING"] },
+      status: { in: ["QUEUED", "RUNNING", "CANCEL_REQUESTED"] },
     },
   });
 }

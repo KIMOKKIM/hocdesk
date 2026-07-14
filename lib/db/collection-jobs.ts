@@ -12,22 +12,34 @@ export async function getCollectionJobsByProject(projectId: string) {
   return jobs.map((job) => {
     const plan = job.searchPlan as { provider?: string; requestedSegments?: string[] };
     return {
-      id: job.id,
-      jobType: job.jobType,
-      status: job.status,
-      statusLabel: collectionStatusLabel(job.status),
-      provider: plan.provider ?? "demo",
-      requestedSegments: plan.requestedSegments ?? [],
-      requestedCount: job.requestedCount,
-      collectedCount: job.collectedCount,
-      acceptedCount: job.acceptedCount,
-      duplicateCount: job.duplicateCount,
-      rejectedCount: job.rejectedCount,
-      errorMessage: job.errorMessage,
-      startedAt: job.startedAt ? formatDateTime(job.startedAt) : null,
-      completedAt: job.completedAt ? formatDateTime(job.completedAt) : null,
-      createdAt: formatDateTime(job.createdAt),
-    };
+    id: job.id,
+    jobType: job.jobType,
+    status: job.status,
+    statusLabel: collectionStatusLabel(job.status),
+    provider: plan.provider ?? "demo",
+    requestedSegments: plan.requestedSegments ?? [],
+    requestedCount: job.requestedCount,
+    collectedCount: job.collectedCount,
+    acceptedCount: job.acceptedCount,
+    duplicateCount: job.duplicateCount,
+    rejectedCount: job.rejectedCount,
+    progressPercent: job.progressPercent ?? null,
+    currentStep: job.currentStep ?? null,
+    currentQuery: job.currentQuery ?? null,
+    processedQueries: job.processedQueries ?? 0,
+    totalQueries: job.totalQueries ?? 0,
+    apiCallCount: job.apiCallCount ?? 0,
+    rawResultCount: job.rawResultCount ?? 0,
+    reviewRequiredCount: job.reviewRequiredCount ?? 0,
+    lastProgressAt: job.lastProgressAt
+      ? formatDateTime(job.lastProgressAt)
+      : null,
+    lastMessage: job.lastMessage ?? null,
+    errorMessage: job.errorMessage,
+    startedAt: job.startedAt ? formatDateTime(job.startedAt) : null,
+    completedAt: job.completedAt ? formatDateTime(job.completedAt) : null,
+    createdAt: formatDateTime(job.createdAt),
+  };
   });
 }
 
@@ -123,9 +135,25 @@ export async function getCollectionJobDetail(jobId: string) {
     acceptedCount: job.acceptedCount,
     duplicateCount: job.duplicateCount,
     rejectedCount: job.rejectedCount,
+    progressPercent: job.progressPercent ?? null,
+    currentStep: job.currentStep ?? null,
+    currentQuery: job.currentQuery ?? null,
+    processedQueries: job.processedQueries ?? 0,
+    totalQueries: job.totalQueries ?? 0,
+    apiCallCount: job.apiCallCount ?? 0,
+    rawResultCount: job.rawResultCount ?? 0,
+    reviewRequiredCount: job.reviewRequiredCount ?? 0,
+    lastProgressAt: job.lastProgressAt
+      ? job.lastProgressAt.toISOString()
+      : null,
+    lastProgressAtLabel: job.lastProgressAt
+      ? formatDateTime(job.lastProgressAt)
+      : null,
+    lastMessage: job.lastMessage ?? null,
     gradeCounts,
     errorMessage: job.errorMessage,
     startedAt: job.startedAt ? formatDateTime(job.startedAt) : null,
+    startedAtIso: job.startedAt ? job.startedAt.toISOString() : null,
     completedAt: job.completedAt ? formatDateTime(job.completedAt) : null,
     createdAt: formatDateTime(job.createdAt),
     companies,
@@ -168,6 +196,8 @@ function collectionStatusLabel(status: string) {
       return "실패";
     case CollectionJobStatus.CANCELLED:
       return "취소";
+    case CollectionJobStatus.CANCEL_REQUESTED:
+      return "취소 요청";
     case CollectionJobStatus.DRY_RUN:
       return "미리보기";
     default:

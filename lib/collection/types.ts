@@ -10,6 +10,7 @@ export type KakaoSearchQuery = {
 
 export type SearchPlan = {
   projectId: string;
+  jobId?: string;
   jobType: string;
   type: string;
   region: string;

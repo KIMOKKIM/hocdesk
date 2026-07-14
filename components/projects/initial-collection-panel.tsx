@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { CollectionJobProgressPanel } from "@/components/collection/collection-job-progress-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,13 +26,27 @@ type CollectionJobSummary = {
   acceptedCount: number;
   duplicateCount: number;
   rejectedCount: number;
+  progressPercent?: number | null;
+  currentStep?: string | null;
+  currentQuery?: string | null;
+  processedQueries?: number;
+  totalQueries?: number;
+  apiCallCount?: number;
+  rawResultCount?: number;
+  reviewRequiredCount?: number;
+  lastProgressAt?: string | null;
+  lastMessage?: string | null;
   errorMessage?: string | null;
   createdAt: string;
   completedAt?: string | null;
+  startedAt?: string | null;
 };
 
 type CollectionJobDetail = CollectionJobSummary & {
   gradeCounts?: { A: number; B: number; C: number };
+  lastProgressAtLabel?: string | null;
+  startedAtIso?: string | null;
+  projectId?: string;
   companies: {
     projectCompanyId: string | null;
     companyId: string;
@@ -199,9 +214,12 @@ export function InitialCollectionPanel({
 
       if (data.job) {
         setLatestJob(data.job);
+      } else if (data.jobId) {
+        await fetchJobDetail(data.jobId);
       }
       await fetchJobs();
       setShowConfirm(false);
+      setShowHistory(true);
     } catch (runError) {
       setError(
         runError instanceof Error ? runError.message : "수집 실행에 실패했습니다.",
@@ -212,8 +230,36 @@ export function InitialCollectionPanel({
   }
 
   const isActive = jobs.some(
-    (job) => job.status === "QUEUED" || job.status === "RUNNING",
+    (job) =>
+      job.status === "QUEUED" ||
+      job.status === "RUNNING" ||
+      job.status === "CANCEL_REQUESTED",
   );
+
+  // 새로고침 후에도 RUNNING/QUEUED 작업이 있으면 진행 패널 복원
+  useEffect(() => {
+    const active = jobs.find(
+      (item) =>
+        item.status === "QUEUED" ||
+        item.status === "RUNNING" ||
+        item.status === "CANCEL_REQUESTED",
+    );
+    if (!active) return;
+    if (latestJob?.id === active.id && isActiveStatus(latestJob.status)) return;
+
+    const timer = setTimeout(() => {
+      void fetchJobDetail(active.id);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [jobs, latestJob, fetchJobDetail]);
+
+  function isActiveStatus(status: string) {
+    return (
+      status === "QUEUED" ||
+      status === "RUNNING" ||
+      status === "CANCEL_REQUESTED"
+    );
+  }
 
   const lastCollectionLabel = panelStats.lastCollectionAt
     ? formatDateTime(panelStats.lastCollectionAt)
@@ -248,7 +294,7 @@ export function InitialCollectionPanel({
             ) : (
               <Play data-icon="inline-start" />
             )}
-            초기 타깃 수집
+            {isRunning || isActive ? "수집 중" : "초기 타깃 수집"}
           </Button>
         </div>
       </CardHeader>
@@ -526,10 +572,41 @@ export function InitialCollectionPanel({
           </div>
         ) : null}
 
-        {(isRunning || isActive) && !showConfirm ? (
-          <p className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
-            수집 작업이 실행 중입니다. 완료 후 결과가 표시됩니다.
-          </p>
+        {(isRunning || isActive || (latestJob && isActiveStatus(latestJob.status))) &&
+        !showConfirm ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">수집 진행상태</p>
+            {latestJob ? (
+              <CollectionJobProgressPanel
+                job={latestJob}
+                poll
+                onUpdate={(job) => {
+                  setLatestJob((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          ...job,
+                          companies: prev.companies,
+                          gradeCounts: prev.gradeCounts,
+                        }
+                      : (job as CollectionJobDetail),
+                  );
+                  if (
+                    job.status === "COMPLETED" ||
+                    job.status === "FAILED" ||
+                    job.status === "CANCELLED" ||
+                    job.status === "DRY_RUN"
+                  ) {
+                    void fetchJobs();
+                  }
+                }}
+              />
+            ) : (
+              <p className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+                수집 작업이 시작되었습니다. 진행상태를 불러오는 중…
+              </p>
+            )}
+          </div>
         ) : null}
 
         {error ? (
@@ -594,6 +671,12 @@ export function InitialCollectionPanel({
                       {job.statusLabel}
                     </Link>
                     <span className="ml-2 text-muted-foreground">{job.createdAt}</span>
+                    {job.currentStep ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {job.progressPercent ?? 0}% · {job.currentStep}
+                        {job.currentQuery ? ` · ${job.currentQuery}` : ""}
+                      </p>
+                    ) : null}
                   </div>
                   <span className="text-muted-foreground">
                     요청 {job.requestedCount} · 신규 {job.acceptedCount} · 중복{" "}

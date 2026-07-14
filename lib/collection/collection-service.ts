@@ -19,6 +19,12 @@ import {
 } from "@/lib/collection/providers";
 import { CompositeSearchProvider } from "@/lib/collection/providers/composite-search-provider";
 import { KakaoLocalSearchProvider } from "@/lib/collection/providers/kakao-local-search-provider";
+import {
+  calcProcessProgressPercent,
+  CollectionProgressStep,
+  isJobCancelRequested,
+  updateJobProgress,
+} from "@/lib/collection/progress";
 import type {
   CollectionAuditEvent,
   CollectionJobResult,
@@ -42,11 +48,17 @@ type RunInitialCollectionOptions = {
   provider?: string;
   dryRun?: boolean;
   importMode?: "review" | "fast";
+  /** true면 job만 생성하고 실행은 호출측에서 비동기로 수행 */
+  deferRun?: boolean;
 };
 
 const BATCH_SIZE = 5;
 
-export async function runInitialCollection({
+/**
+ * 초기 수집 작업 생성. deferRun=true면 QUEUED 상태로 jobId만 반환.
+ * Vercel timeout을 줄이려면 create → after(run) 패턴을 권장한다.
+ */
+export async function createInitialCollectionJob({
   projectId,
   force = false,
   confirmed = false,
@@ -54,7 +66,14 @@ export async function runInitialCollection({
   provider: providerOverride,
   dryRun = false,
   importMode,
-}: RunInitialCollectionOptions): Promise<CollectionJobResult> {
+}: Omit<RunInitialCollectionOptions, "deferRun">): Promise<{
+  jobId: string;
+  projectLocation: string | null;
+  askingPrice: bigint | null;
+  providerName: SearchProviderName;
+  dryRun: boolean;
+  requestedCount: number;
+}> {
   const project = await prisma.project.findUnique({ where: { id: projectId } });
   if (!project) {
     throw new Error("프로젝트를 찾을 수 없습니다.");
@@ -107,6 +126,11 @@ export async function runInitialCollection({
     importMode: importMode ?? (providerName === "demo" ? "fast" : "review"),
   };
 
+  const totalQueries =
+    searchPlan.queryCount ??
+    searchPlan.generatedQueries?.length ??
+    searchPlan.keywords.length;
+
   const job = await prisma.targetCollectionJob.create({
     data: {
       projectId,
@@ -114,6 +138,11 @@ export async function runInitialCollection({
       status: CollectionJobStatus.QUEUED,
       searchPlan,
       requestedCount: boundedRequest,
+      progressPercent: 0,
+      currentStep: CollectionProgressStep.PREPARING,
+      totalQueries,
+      lastMessage: "수집 작업이 대기열에 등록되었습니다.",
+      lastProgressAt: new Date(),
     },
   });
 
@@ -135,11 +164,39 @@ export async function runInitialCollection({
     requestedCount: boundedRequest,
   });
 
-  return runCollectionJob(job.id, {
+  return {
+    jobId: job.id,
     projectLocation: project.location,
     askingPrice: project.askingPrice,
-    providerOverride: providerName,
+    providerName,
     dryRun,
+    requestedCount: boundedRequest,
+  };
+}
+
+export async function runInitialCollection(
+  options: RunInitialCollectionOptions,
+): Promise<CollectionJobResult> {
+  const created = await createInitialCollectionJob(options);
+  if (options.deferRun) {
+    return {
+      jobId: created.jobId,
+      status: CollectionJobStatus.QUEUED,
+      requestedCount: created.requestedCount,
+      collectedCount: 0,
+      acceptedCount: 0,
+      duplicateCount: 0,
+      rejectedCount: 0,
+      gradeCounts: { A: 0, B: 0, C: 0, EXCLUDED: 0 },
+      errorMessage: null,
+      jobStats: null,
+    };
+  }
+  return runCollectionJob(created.jobId, {
+    projectLocation: created.projectLocation,
+    askingPrice: created.askingPrice,
+    providerOverride: created.providerName,
+    dryRun: created.dryRun,
   });
 }
 
@@ -166,8 +223,18 @@ export async function runCollectionJob(
     throw new Error("이미 실행 중인 작업입니다.");
   }
 
+  if (
+    job.status === CollectionJobStatus.COMPLETED ||
+    job.status === CollectionJobStatus.DRY_RUN ||
+    job.status === CollectionJobStatus.CANCELLED
+  ) {
+    throw new Error("이미 종료된 작업입니다.");
+  }
+
   const projectId = job.projectId;
-  const searchPlan = job.searchPlan as SearchPlan;
+  let searchPlan = job.searchPlan as SearchPlan;
+  searchPlan = { ...searchPlan, jobId: job.id };
+
   const providerName = resolveSearchProviderName(
     context.providerOverride ?? searchPlan.provider,
   );
@@ -191,18 +258,25 @@ export async function runCollectionJob(
   let acceptedCount = job.acceptedCount;
   let duplicateCount = job.duplicateCount;
   let rejectedCount = job.rejectedCount;
+  let reviewRequiredCount = job.reviewRequiredCount ?? 0;
   const gradeCounts = { A: 0, B: 0, C: 0, EXCLUDED: 0 };
   let withPhone = 0;
   let withoutWebsite = 0;
   let withoutEmail = 0;
 
   try {
+    await updateJobProgress(job.id, {
+      status: CollectionJobStatus.RUNNING,
+      currentStep: CollectionProgressStep.BUILDING_PLAN,
+      progressPercent: 5,
+      startedAt: job.startedAt ?? new Date(),
+      lastMessage: "검색 계획을 준비합니다.",
+    });
+
+    // Persist jobId onto searchPlan for provider progress hooks
     await prisma.targetCollectionJob.update({
       where: { id: job.id },
-      data: {
-        status: CollectionJobStatus.RUNNING,
-        startedAt: job.startedAt ?? new Date(),
-      },
+      data: { searchPlan },
     });
 
     collectionAudit(job.id, startedEvent, { jobType: job.jobType, provider: providerName });
@@ -211,12 +285,29 @@ export async function runCollectionJob(
     }
     collectionLog(job.id, "수집 시작", { jobType: job.jobType, provider: providerName });
 
-    const candidates = await provider.searchCompanies(searchPlan);
-    collectionLog(job.id, "Provider 후보 반환", { count: candidates.length });
-
-    if (candidates.length === 0) {
-      throw new Error("업체 후보가 생성되지 않았습니다. 검색계획을 확인하세요.");
+    if (await isJobCancelRequested(job.id)) {
+      return finalizeCancelled(job.id, {
+        collectedCount,
+        acceptedCount,
+        duplicateCount,
+        rejectedCount,
+        gradeCounts,
+      });
     }
+
+    const candidates = await provider.searchCompanies(searchPlan);
+
+    if (await isJobCancelRequested(job.id)) {
+      return finalizeCancelled(job.id, {
+        collectedCount,
+        acceptedCount,
+        duplicateCount,
+        rejectedCount,
+        gradeCounts,
+      });
+    }
+
+    collectionLog(job.id, "Provider 후보 반환", { count: candidates.length });
 
     const kakaoContext =
       provider instanceof KakaoLocalSearchProvider
@@ -225,14 +316,51 @@ export async function runCollectionJob(
           ? provider.getKakaoContext()
           : null;
 
+    if (kakaoContext?.cancelled) {
+      return finalizeCancelled(job.id, {
+        collectedCount,
+        acceptedCount,
+        duplicateCount,
+        rejectedCount,
+        gradeCounts,
+      });
+    }
+
+    if (candidates.length === 0) {
+      throw new Error("업체 후보가 생성되지 않았습니다. 검색계획을 확인하세요.");
+    }
+
     if (kakaoContext) {
       rejectedCount += kakaoContext.industryRejected;
+      reviewRequiredCount = kakaoContext.industryReview;
     }
+
+    await updateJobProgress(job.id, {
+      currentStep: CollectionProgressStep.NORMALIZING,
+      progressPercent: 60,
+      collectedCount: candidates.length,
+      rejectedCount,
+      reviewRequiredCount,
+      apiCallCount: kakaoContext?.apiCallCount,
+      rawResultCount: kakaoContext?.rawResultCount,
+      lastMessage: `후보 ${candidates.length}건 정규화·검증을 시작합니다.`,
+    });
 
     const segmentCounts = new Map<string, number>();
     const processLimit = job.requestedCount || searchPlan.maxTotal;
+    let processed = 0;
 
     for (let index = 0; index < candidates.length; index += 1) {
+      if (await isJobCancelRequested(job.id)) {
+        return finalizeCancelled(job.id, {
+          collectedCount,
+          acceptedCount,
+          duplicateCount,
+          rejectedCount,
+          gradeCounts,
+        });
+      }
+
       if (acceptedCount >= processLimit) {
         collectionLog(job.id, "요청 처리 한도 도달", { acceptedCount, processLimit });
         break;
@@ -256,6 +384,15 @@ export async function runCollectionJob(
 
       const rawCandidate = candidates[index]!;
       collectedCount += 1;
+      processed += 1;
+
+      if (index === 0 || index % 10 === 0) {
+        await updateJobProgress(job.id, {
+          currentStep: CollectionProgressStep.VALIDATING,
+          progressPercent: 60 + Math.min(20, Math.round((processed / candidates.length) * 20)),
+          lastMessage: `검증 중: ${rawCandidate.companyName}`,
+        });
+      }
 
       let candidate = provider.normalizeCompany(rawCandidate);
       candidate = applyTargetFit(candidate, {
@@ -295,6 +432,21 @@ export async function runCollectionJob(
         continue;
       }
 
+      if (index === 0 || acceptedCount % BATCH_SIZE === 0) {
+        await updateJobProgress(job.id, {
+          currentStep:
+            importMode === "review"
+              ? CollectionProgressStep.SAVING_CANDIDATES
+              : CollectionProgressStep.SAVING_COMPANIES,
+          progressPercent: calcProcessProgressPercent(acceptedCount, processLimit),
+          collectedCount,
+          acceptedCount,
+          duplicateCount,
+          rejectedCount,
+          reviewRequiredCount,
+        });
+      }
+
       const processResult = await processCollectionCandidate({
         candidate,
         projectId,
@@ -319,6 +471,7 @@ export async function runCollectionJob(
 
       if (processResult.action === "queued") {
         acceptedCount += 1;
+        reviewRequiredCount += 1;
         segmentCounts.set(segmentKey, segmentCount + 1);
         if (candidate.mainPhone) withPhone += 1;
         if (!candidate.website) withoutWebsite += 1;
@@ -342,17 +495,29 @@ export async function runCollectionJob(
       });
 
       if (acceptedCount % BATCH_SIZE === 0) {
-        await prisma.targetCollectionJob.update({
-          where: { id: job.id },
-          data: {
-            collectedCount,
-            acceptedCount,
-            duplicateCount,
-            rejectedCount,
-          },
+        await updateJobProgress(job.id, {
+          currentStep: CollectionProgressStep.SAVING_COMPANIES,
+          progressPercent: calcProcessProgressPercent(acceptedCount, processLimit),
+          collectedCount,
+          acceptedCount,
+          duplicateCount,
+          rejectedCount,
+          reviewRequiredCount,
+          lastMessage: `신규 ${acceptedCount}건 등록됨`,
         });
       }
     }
+
+    await updateJobProgress(job.id, {
+      currentStep: CollectionProgressStep.AGGREGATING,
+      progressPercent: 95,
+      collectedCount,
+      acceptedCount,
+      duplicateCount,
+      rejectedCount,
+      reviewRequiredCount,
+      lastMessage: "작업 결과를 집계합니다.",
+    });
 
     const jobStats = buildJobStats({
       provider: providerName,
@@ -367,17 +532,30 @@ export async function runCollectionJob(
       withoutEmail,
     });
 
-    const updatedJob = await prisma.targetCollectionJob.update({
+    const finalStatus = dryRun
+      ? CollectionJobStatus.DRY_RUN
+      : CollectionJobStatus.COMPLETED;
+
+    await updateJobProgress(job.id, {
+      status: finalStatus,
+      currentStep: CollectionProgressStep.COMPLETED,
+      progressPercent: 100,
+      collectedCount,
+      acceptedCount,
+      duplicateCount,
+      rejectedCount,
+      reviewRequiredCount,
+      apiCallCount: kakaoContext?.apiCallCount,
+      rawResultCount: kakaoContext?.rawResultCount,
+      completedAt: new Date(),
+      lastMessage: dryRun
+        ? "미리보기가 완료되었습니다."
+        : "수집 작업이 완료되었습니다.",
+      jobStats,
+    });
+
+    const updatedJob = await prisma.targetCollectionJob.findUniqueOrThrow({
       where: { id: job.id },
-      data: {
-        status: dryRun ? CollectionJobStatus.DRY_RUN : CollectionJobStatus.COMPLETED,
-        collectedCount,
-        acceptedCount,
-        duplicateCount,
-        rejectedCount,
-        jobStats,
-        completedAt: new Date(),
-      },
     });
 
     collectionAudit(job.id, completedEvent, {
@@ -396,7 +574,7 @@ export async function runCollectionJob(
         dryRun,
       });
       await writeActivityLog({
-        eventType: dryRun ? "EXTERNAL_SEARCH_COMPLETED" : "EXTERNAL_SEARCH_COMPLETED",
+        eventType: "EXTERNAL_SEARCH_COMPLETED",
         summary: dryRun
           ? `외부 검색 미리보기 완료 (${acceptedCount}건 후보)`
           : `외부 검색 완료 (신규 ${acceptedCount}건)`,
@@ -430,22 +608,85 @@ export async function runCollectionJob(
       );
     }
 
-    const updatedJob = await prisma.targetCollectionJob.update({
+    const safeMessage =
+      error instanceof Error ? error.message : "알 수 없는 오류";
+
+    await updateJobProgress(job.id, {
+      status: CollectionJobStatus.FAILED,
+      currentStep: CollectionProgressStep.FAILED,
+      collectedCount,
+      acceptedCount,
+      duplicateCount,
+      rejectedCount,
+      reviewRequiredCount,
+      errorMessage: safeMessage,
+      completedAt: new Date(),
+      lastMessage: "수집 작업이 실패했습니다.",
+    });
+
+    const updatedJob = await prisma.targetCollectionJob.findUniqueOrThrow({
       where: { id: job.id },
-      data: {
-        status: CollectionJobStatus.FAILED,
-        collectedCount,
-        acceptedCount,
-        duplicateCount,
-        rejectedCount,
-        errorMessage:
-          error instanceof Error ? error.message : "알 수 없는 오류",
-        completedAt: new Date(),
-      },
     });
 
     return mapJobResult(updatedJob, gradeCounts);
   }
+}
+
+export async function requestCancelCollectionJob(jobId: string): Promise<{
+  ok: boolean;
+  status: string;
+  message: string;
+}> {
+  const job = await prisma.targetCollectionJob.findUnique({
+    where: { id: jobId },
+  });
+  if (!job) {
+    throw new Error("수집 작업을 찾을 수 없습니다.");
+  }
+  if (job.status !== CollectionJobStatus.RUNNING && job.status !== CollectionJobStatus.QUEUED) {
+    return {
+      ok: false,
+      status: job.status,
+      message: "실행 중인 작업만 취소할 수 있습니다.",
+    };
+  }
+
+  await updateJobProgress(jobId, {
+    status: CollectionJobStatus.CANCEL_REQUESTED,
+    lastMessage: "취소 요청이 접수되었습니다. 현재 검색어 처리 후 중단합니다.",
+  });
+
+  return {
+    ok: true,
+    status: CollectionJobStatus.CANCEL_REQUESTED,
+    message: "취소 요청이 접수되었습니다.",
+  };
+}
+
+async function finalizeCancelled(
+  jobId: string,
+  counts: {
+    collectedCount: number;
+    acceptedCount: number;
+    duplicateCount: number;
+    rejectedCount: number;
+    gradeCounts: { A: number; B: number; C: number; EXCLUDED: number };
+  },
+): Promise<CollectionJobResult> {
+  await updateJobProgress(jobId, {
+    status: CollectionJobStatus.CANCELLED,
+    currentStep: CollectionProgressStep.CANCELLED,
+    collectedCount: counts.collectedCount,
+    acceptedCount: counts.acceptedCount,
+    duplicateCount: counts.duplicateCount,
+    rejectedCount: counts.rejectedCount,
+    completedAt: new Date(),
+    lastMessage: "수집 작업이 취소되었습니다. 이미 저장된 데이터는 유지됩니다.",
+  });
+  const updatedJob = await prisma.targetCollectionJob.findUniqueOrThrow({
+    where: { id: jobId },
+  });
+  return mapJobResult(updatedJob, counts.gradeCounts);
 }
 
 function buildJobStats(params: {
@@ -512,7 +753,7 @@ function mapJobResult(
     duplicateCount: job.duplicateCount,
     rejectedCount: job.rejectedCount,
     gradeCounts,
-    jobStats: (jobStats ?? job.jobStats ?? null) as CollectionJobStats | null,
     errorMessage: job.errorMessage,
+    jobStats: jobStats ?? (job.jobStats as CollectionJobStats | null) ?? null,
   };
 }

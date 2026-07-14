@@ -145,6 +145,16 @@ export const TURSO_SCHEMA_DDL_STATEMENTS: string[] = [
     "rejectedCount" INTEGER NOT NULL DEFAULT 0,
     "errorMessage" TEXT,
     "jobStats" JSON,
+    "progressPercent" INTEGER,
+    "currentStep" TEXT,
+    "currentQuery" TEXT,
+    "processedQueries" INTEGER NOT NULL DEFAULT 0,
+    "totalQueries" INTEGER NOT NULL DEFAULT 0,
+    "apiCallCount" INTEGER NOT NULL DEFAULT 0,
+    "rawResultCount" INTEGER NOT NULL DEFAULT 0,
+    "reviewRequiredCount" INTEGER NOT NULL DEFAULT 0,
+    "lastProgressAt" DATETIME,
+    "lastMessage" TEXT,
     "startedAt" DATETIME,
     "completedAt" DATETIME,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -266,4 +276,18 @@ export const TURSO_SCHEMA_DDL_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS "ActivityLog_companyId_idx" ON "ActivityLog"("companyId")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "AppSetting_key_key" ON "AppSetting"("key")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "SuppressionList_email_key" ON "SuppressionList"("email")`,
+];
+
+/** 기존 TargetCollectionJob 테이블에 진행상태 컬럼 추가 (idempotent: duplicate column 무시) */
+export const TURSO_SCHEMA_ALTER_STATEMENTS: string[] = [
+  `ALTER TABLE "TargetCollectionJob" ADD COLUMN "progressPercent" INTEGER`,
+  `ALTER TABLE "TargetCollectionJob" ADD COLUMN "currentStep" TEXT`,
+  `ALTER TABLE "TargetCollectionJob" ADD COLUMN "currentQuery" TEXT`,
+  `ALTER TABLE "TargetCollectionJob" ADD COLUMN "processedQueries" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "TargetCollectionJob" ADD COLUMN "totalQueries" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "TargetCollectionJob" ADD COLUMN "apiCallCount" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "TargetCollectionJob" ADD COLUMN "rawResultCount" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "TargetCollectionJob" ADD COLUMN "reviewRequiredCount" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "TargetCollectionJob" ADD COLUMN "lastProgressAt" DATETIME`,
+  `ALTER TABLE "TargetCollectionJob" ADD COLUMN "lastMessage" TEXT`,
 ];

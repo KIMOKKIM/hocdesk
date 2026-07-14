@@ -9,6 +9,12 @@ import {
 } from "@/lib/collection/kakao-search-queries";
 import { collectionAudit } from "@/lib/collection/logger";
 import {
+  calcSearchProgressPercent,
+  CollectionProgressStep,
+  isJobCancelRequested,
+  updateJobProgress,
+} from "@/lib/collection/progress";
+import {
   delay,
   isKakaoApiConfigured,
   KakaoApiError,
@@ -31,6 +37,7 @@ export type KakaoSearchContext = {
   industryReview: number;
   industryRejected: number;
   pagesRequested: number;
+  cancelled?: boolean;
 };
 
 export function assertKakaoConfigured() {
@@ -50,6 +57,7 @@ export class KakaoLocalSearchProvider implements TargetSearchProvider {
   async searchCompanies(searchPlan: SearchPlan): Promise<SearchCandidate[]> {
     assertKakaoConfigured();
     this.context = createEmptyContext();
+    this.context.jobId = searchPlan.jobId ?? this.context.jobId;
 
     const enrichedPlan = enrichSearchPlanWithKakaoQueries(searchPlan, this.name);
     const queries = buildKakaoSearchQueries(enrichedPlan).slice(
@@ -61,11 +69,43 @@ export class KakaoLocalSearchProvider implements TargetSearchProvider {
       throw new Error("Kakao 검색어가 생성되지 않았습니다.");
     }
 
+    if (this.context.jobId) {
+      await updateJobProgress(this.context.jobId, {
+        totalQueries: queries.length,
+        processedQueries: 0,
+        currentStep: CollectionProgressStep.SEARCH_READY,
+        progressPercent: 10,
+        lastMessage: `총 ${queries.length}개 검색어를 처리합니다.`,
+      });
+    }
+
     const seenExternalIds = new Set<string>();
     const results: SearchCandidate[] = [];
+    let processedQueries = 0;
 
     for (const item of queries) {
       if (results.length >= EXTERNAL_SEARCH_LIMITS.maxRawResultsPerJob) break;
+
+      if (this.context.jobId && (await isJobCancelRequested(this.context.jobId))) {
+        this.context.cancelled = true;
+        break;
+      }
+
+      if (this.context.jobId) {
+        await updateJobProgress(this.context.jobId, {
+          currentStep: CollectionProgressStep.CALLING_API,
+          currentQuery: item.query,
+          processedQueries,
+          totalQueries: queries.length,
+          progressPercent: calcSearchProgressPercent(processedQueries, queries.length),
+          apiCallCount: this.context.apiCallCount,
+          rawResultCount: this.context.rawResultCount,
+          reviewRequiredCount: this.context.industryReview,
+          lastMessage: `검색어 처리 중: ${item.query}`,
+        });
+      }
+
+      let queryRawCount = 0;
 
       for (let page = 1; page <= EXTERNAL_SEARCH_LIMITS.maxPagesPerQuery; page++) {
         if (results.length >= EXTERNAL_SEARCH_LIMITS.maxRawResultsPerJob) break;
@@ -77,13 +117,49 @@ export class KakaoLocalSearchProvider implements TargetSearchProvider {
         this.context.apiCallCount += 1;
         this.context.pagesRequested += 1;
 
-        const response = await searchKakaoLocal({
-          query: item.query,
-          page,
-          size: EXTERNAL_SEARCH_LIMITS.pageSize,
-          sort: "accuracy",
-        });
+        let response;
+        try {
+          response = await searchKakaoLocal({
+            query: item.query,
+            page,
+            size: EXTERNAL_SEARCH_LIMITS.pageSize,
+            sort: "accuracy",
+          });
+        } catch (error) {
+          if (error instanceof KakaoApiError) {
+            if (error.code === "QUOTA_EXCEEDED" && this.context.jobId) {
+              await updateJobProgress(this.context.jobId, {
+                currentStep: CollectionProgressStep.CALLING_API,
+                lastMessage: CollectionProgressStep.RATE_LIMITED,
+              });
+              await delay(2000);
+              try {
+                response = await searchKakaoLocal({
+                  query: item.query,
+                  page,
+                  size: EXTERNAL_SEARCH_LIMITS.pageSize,
+                  sort: "accuracy",
+                });
+              } catch (retryError) {
+                throw retryError;
+              }
+            } else if (error.code === "TIMEOUT" && this.context.jobId) {
+              await updateJobProgress(this.context.jobId, {
+                currentStep: CollectionProgressStep.CALLING_API,
+                lastMessage: CollectionProgressStep.RESPONSE_DELAYED,
+              });
+              throw error;
+            } else {
+              throw error;
+            }
+          } else {
+            throw error;
+          }
+        }
 
+        if (!response) throw new Error("Kakao API 응답이 없습니다.");
+
+        queryRawCount += response.documents.length;
         this.context.rawResultCount += response.documents.length;
 
         if (this.context.jobId) {
@@ -141,6 +217,25 @@ export class KakaoLocalSearchProvider implements TargetSearchProvider {
 
         if (response.meta.is_end) break;
       }
+
+      processedQueries += 1;
+      if (this.context.jobId) {
+        await updateJobProgress(this.context.jobId, {
+          currentStep: CollectionProgressStep.CALLING_API,
+          currentQuery: item.query,
+          processedQueries,
+          totalQueries: queries.length,
+          progressPercent: calcSearchProgressPercent(processedQueries, queries.length),
+          apiCallCount: this.context.apiCallCount,
+          rawResultCount: this.context.rawResultCount,
+          reviewRequiredCount: this.context.industryReview,
+          lastMessage: `검색어 ${item.query} 처리 완료: 원본 ${queryRawCount}건`,
+        });
+      }
+    }
+
+    if (this.context.cancelled) {
+      return results;
     }
 
     if (results.length === 0) {

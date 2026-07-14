@@ -1,6 +1,9 @@
 import { createClient } from "@libsql/client";
 import { hasTursoEnv } from "@/lib/db/turso-env";
-import { TURSO_SCHEMA_DDL_STATEMENTS } from "@/lib/turso/schema-ddl";
+import {
+  TURSO_SCHEMA_ALTER_STATEMENTS,
+  TURSO_SCHEMA_DDL_STATEMENTS,
+} from "@/lib/turso/schema-ddl";
 
 export type SetupSchemaResult = {
   applied: boolean;
@@ -29,6 +32,16 @@ function requireTursoCredentials(): { url: string; authToken: string } {
   return { url, authToken };
 }
 
+function isIgnorableAlterError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes("duplicate column") ||
+    message.includes("already exists") ||
+    message.includes("no such table")
+  );
+}
+
 /**
  * Apply Turso schema idempotently (CREATE TABLE/INDEX IF NOT EXISTS).
  * Does not drop tables or delete existing rows.
@@ -48,9 +61,17 @@ export async function applyTursoSchema(): Promise<SetupSchemaResult> {
     for (const statement of TURSO_SCHEMA_DDL_STATEMENTS) {
       await client.execute(statement);
     }
+    for (const statement of TURSO_SCHEMA_ALTER_STATEMENTS) {
+      try {
+        await client.execute(statement);
+      } catch (error) {
+        if (!isIgnorableAlterError(error)) throw error;
+      }
+    }
     return {
       applied: true,
-      statementCount: TURSO_SCHEMA_DDL_STATEMENTS.length,
+      statementCount:
+        TURSO_SCHEMA_DDL_STATEMENTS.length + TURSO_SCHEMA_ALTER_STATEMENTS.length,
     };
   } catch {
     throw new TursoSetupError(

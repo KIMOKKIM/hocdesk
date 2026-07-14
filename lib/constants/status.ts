@@ -48,6 +48,7 @@ export const CollectionJobStatus = {
   COMPLETED: "COMPLETED",
   FAILED: "FAILED",
   CANCELLED: "CANCELLED",
+  CANCEL_REQUESTED: "CANCEL_REQUESTED",
   DRY_RUN: "DRY_RUN",
 } as const;
 

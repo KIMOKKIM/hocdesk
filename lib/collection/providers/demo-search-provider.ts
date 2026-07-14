@@ -5,6 +5,11 @@ import type {
   ValidationResult,
 } from "@/lib/collection/types";
 import {
+  calcSearchProgressPercent,
+  CollectionProgressStep,
+  updateJobProgress,
+} from "@/lib/collection/progress";
+import {
   extractDomain,
   normalizeAddress,
   normalizePhone,
@@ -84,34 +89,81 @@ export class DemoSearchProvider implements TargetSearchProvider {
     const results: SearchCandidate[] = [];
     let globalIndex = 0;
 
+    const totalQueries = Math.max(
+      1,
+      searchPlan.segments.length * Math.max(1, searchPlan.regions.length || 1),
+    );
+    let processedQueries = 0;
+
+    if (searchPlan.jobId) {
+      await updateJobProgress(searchPlan.jobId, {
+        totalQueries,
+        processedQueries: 0,
+        currentStep: CollectionProgressStep.SEARCH_READY,
+        progressPercent: 10,
+        lastMessage: `데모 검색: 총 ${totalQueries}개 구간을 처리합니다.`,
+      });
+    }
+
     for (const segment of searchPlan.segments) {
       const regions =
         searchPlan.regions.length > 0 ? searchPlan.regions : [segment.region];
       const maxPerSegment = segment.maxCount ?? searchPlan.maxPerSegment;
 
-      for (let i = 0; i < maxPerSegment; i++) {
+      for (const region of regions) {
+        if (searchPlan.jobId) {
+          await updateJobProgress(searchPlan.jobId, {
+            currentStep: CollectionProgressStep.CALLING_API,
+            currentQuery: `${region} ${segment.segmentName}`,
+            processedQueries,
+            totalQueries,
+            progressPercent: calcSearchProgressPercent(
+              processedQueries,
+              totalQueries,
+            ),
+            lastMessage: `데모 검색 중: ${region} / ${segment.segmentName}`,
+          });
+        }
+
+        for (let i = 0; i < maxPerSegment; i++) {
+          if (results.length >= searchPlan.maxTotal) break;
+
+          globalIndex += 1;
+          const keyword = pick(segment.keywords, globalIndex);
+          const duplicateName =
+            globalIndex % 4 === 0
+              ? SEED_DUPLICATE_NAMES[
+                  Math.floor(globalIndex / 4) % SEED_DUPLICATE_NAMES.length
+                ]
+              : undefined;
+
+          results.push(
+            this.buildCandidate({
+              segment,
+              region,
+              keyword,
+              globalIndex,
+              localIndex: i + 1,
+              forceName: duplicateName,
+            }),
+          );
+        }
+
+        processedQueries += 1;
+        if (searchPlan.jobId) {
+          await updateJobProgress(searchPlan.jobId, {
+            processedQueries,
+            totalQueries,
+            progressPercent: calcSearchProgressPercent(
+              processedQueries,
+              totalQueries,
+            ),
+            rawResultCount: results.length,
+            lastMessage: `데모 구간 처리 완료: 원본 ${results.length}건`,
+          });
+        }
+
         if (results.length >= searchPlan.maxTotal) break;
-
-        globalIndex += 1;
-        const region = pick(regions, globalIndex + i);
-        const keyword = pick(segment.keywords, globalIndex);
-        const duplicateName =
-          globalIndex % 4 === 0
-            ? SEED_DUPLICATE_NAMES[
-                Math.floor(globalIndex / 4) % SEED_DUPLICATE_NAMES.length
-              ]
-            : undefined;
-
-        results.push(
-          this.buildCandidate({
-            segment,
-            region,
-            keyword,
-            globalIndex,
-            localIndex: i + 1,
-            forceName: duplicateName,
-          }),
-        );
       }
 
       if (results.length >= searchPlan.maxTotal) break;
