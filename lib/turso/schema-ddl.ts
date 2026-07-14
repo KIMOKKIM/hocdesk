@@ -264,6 +264,24 @@ export const TURSO_SCHEMA_DDL_STATEMENTS: string[] = [
     "optedOutAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "source" TEXT
   )`,
+  `CREATE TABLE IF NOT EXISTS "ProjectInsight" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "projectId" TEXT NOT NULL,
+    "category" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "summary" TEXT,
+    "keyIssues" JSON,
+    "saleImpact" TEXT,
+    "opportunities" JSON,
+    "risks" JSON,
+    "sourceNotes" TEXT,
+    "sourceUrls" JSON,
+    "content" JSON,
+    "lastUpdatedAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "ProjectInsight_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+  )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "Company_businessNumber_key" ON "Company"("businessNumber")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "ProjectCompany_projectId_companyId_key" ON "ProjectCompany"("projectId", "companyId")`,
   `CREATE INDEX IF NOT EXISTS "CompanySource_companyId_provider_externalId_idx" ON "CompanySource"("companyId", "provider", "externalId")`,
@@ -276,6 +294,9 @@ export const TURSO_SCHEMA_DDL_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS "ActivityLog_companyId_idx" ON "ActivityLog"("companyId")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "AppSetting_key_key" ON "AppSetting"("key")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "SuppressionList_email_key" ON "SuppressionList"("email")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ProjectInsight_projectId_category_key" ON "ProjectInsight"("projectId", "category")`,
+  `CREATE INDEX IF NOT EXISTS "ProjectInsight_projectId_idx" ON "ProjectInsight"("projectId")`,
+  `CREATE INDEX IF NOT EXISTS "ProjectInsight_category_idx" ON "ProjectInsight"("category")`,
 ];
 
 /** 기존 TargetCollectionJob 테이블에 진행상태 컬럼 추가 (idempotent: duplicate column 무시) */

@@ -1,13 +1,14 @@
 import {
   Activity,
   Building2,
+  Briefcase,
   History,
+  Home,
   LayoutDashboard,
   Lightbulb,
   Mail,
   Search,
   Settings,
-  Briefcase,
   ShieldCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -19,6 +20,7 @@ export type NavItem = {
 };
 
 export const mainNavItems: NavItem[] = [
+  { title: "HOME", href: "/dashboard", icon: Home },
   { title: "대시보드", href: "/dashboard", icon: LayoutDashboard },
   { title: "매각 프로젝트", href: "/projects", icon: Briefcase },
   { title: "타깃 업체", href: "/targets", icon: Building2 },

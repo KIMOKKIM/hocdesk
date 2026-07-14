@@ -2,6 +2,10 @@ import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { DbSetupAlert } from "@/components/ui/db-setup-alert";
 import { isAdminAuthenticated } from "@/lib/auth/admin-session";
 import {
+  getAdminAvatarInitials,
+  getAdminDisplayName,
+} from "@/lib/config/admin-display";
+import {
   isProductionEnvironment,
   resolveDatabaseProvider,
 } from "@/lib/db/database-provider";
@@ -23,6 +27,8 @@ export default async function AppLayout({
 
   const projects = await loadPageData(() => getProjectOptions());
   const dbReady = projects !== null;
+  const displayName = getAdminDisplayName();
+  const avatarInitials = getAdminAvatarInitials(displayName);
 
   let databaseProvider = "sqlite";
   try {
@@ -32,7 +38,12 @@ export default async function AppLayout({
   }
 
   return (
-    <DashboardShell projects={projects ?? []} dbReady={dbReady}>
+    <DashboardShell
+      projects={projects ?? []}
+      dbReady={dbReady}
+      displayName={displayName}
+      avatarInitials={avatarInitials}
+    >
       {!dbReady ? (
         <div className="mb-6">
           <DbSetupAlert

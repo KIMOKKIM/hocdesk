@@ -24,6 +24,8 @@ import { withBasePath } from "@/lib/paths";
 type AppHeaderProps = {
   projects?: { value: string; label: string }[];
   dbReady?: boolean;
+  displayName?: string;
+  avatarInitials?: string;
 };
 
 function formatTodayDate() {
@@ -41,7 +43,12 @@ function projectSelectorLabel(projects: { label: string }[], dbReady: boolean) {
   return "프로젝트 선택";
 }
 
-export function AppHeader({ projects = [], dbReady = true }: AppHeaderProps) {
+export function AppHeader({
+  projects = [],
+  dbReady = true,
+  displayName = "HOCDESK",
+  avatarInitials = "HD",
+}: AppHeaderProps) {
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
   const placeholder = projectSelectorLabel(projects, dbReady);
@@ -104,19 +111,21 @@ export function AppHeader({ projects = [], dbReady = true }: AppHeaderProps) {
               <Button variant="ghost" className="gap-2 px-2">
                 <Avatar className="size-8">
                   <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                    김영
+                    {avatarInitials}
                   </AvatarFallback>
                 </Avatar>
                 <span className="hidden text-sm font-medium md:inline">
-                  김영업 팀장
+                  {displayName}
                 </span>
                 <ChevronDown className="size-4 text-muted-foreground" />
               </Button>
             }
           />
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>내 프로필</DropdownMenuItem>
-            <DropdownMenuItem>알림 설정</DropdownMenuItem>
+            <DropdownMenuItem disabled>{displayName}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/settings")}>
+              설정
+            </DropdownMenuItem>
             <DropdownMenuItem disabled={loggingOut} onClick={() => void handleLogout()}>
               {loggingOut ? "로그아웃 중..." : "로그아웃"}
             </DropdownMenuItem>

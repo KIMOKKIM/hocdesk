@@ -1,5 +1,6 @@
 import "dotenv/config";
-import { createPrismaClient } from "../lib/db/create-prisma-client";
+import { PrismaClient } from "../app/generated/prisma/client";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import {
   CompanyStatus,
   ContactPermissionStatus,
@@ -10,6 +11,7 @@ import {
   SuggestionStatus,
 } from "../lib/constants/status";
 import { normalizeCompanyName } from "../lib/format";
+import { seedProjectInsights } from "../lib/project-insights/seed";
 
 if (process.env.NODE_ENV === "production" && process.env.ALLOW_PRODUCTION_SEED !== "true") {
   console.error(
@@ -18,7 +20,11 @@ if (process.env.NODE_ENV === "production" && process.env.ALLOW_PRODUCTION_SEED !
   process.exit(1);
 }
 
-const prisma = createPrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaBetterSqlite3({
+    url: process.env.DATABASE_URL ?? "file:./dev.db",
+  }),
+});
 
 /** 고정 ID — seed 반복 실행 시 upsert 기준 */
 const DEMO_PROJECT_ID = "seed_jinwoong_yangju_sale";
@@ -377,10 +383,13 @@ async function main() {
     },
   });
 
+  await seedProjectInsights(prisma, DEMO_PROJECT_ID);
+
   if (!includeDemo) {
     console.log("Seed completed (operational only — demo excluded):");
     console.log(`  Projects: ${await prisma.project.count()}`);
     console.log(`  Companies: ${await prisma.company.count()}`);
+    console.log(`  ProjectInsights: ${await prisma.projectInsight.count()}`);
     console.log("  Tip: 데모 업체 포함 시 npm run db:seed -- --include-demo");
     return;
   }

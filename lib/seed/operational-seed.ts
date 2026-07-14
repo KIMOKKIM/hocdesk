@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@/app/generated/prisma/client";
 import { ProjectStatus } from "@/lib/constants/status";
+import { seedProjectInsights } from "@/lib/project-insights/seed";
 
 export const OPERATIONAL_PROJECT_ID = "seed_jinwoong_yangju_sale";
 
@@ -55,4 +56,6 @@ export async function seedOperationalProject(prisma: PrismaClient) {
       },
     },
   });
+
+  await seedProjectInsights(prisma, OPERATIONAL_PROJECT_ID);
 }

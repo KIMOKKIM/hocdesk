@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { InitialCollectionPanel } from "@/components/projects/initial-collection-panel";
+import { ProjectInsightsPanel } from "@/components/projects/project-insights-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/db/collection-jobs";
 import { getCollectionPanelStats } from "@/lib/collection/limits";
 import { getProviderDisplayName, getProviderOptions } from "@/lib/collection/providers";
+import { getProjectInsights } from "@/lib/project-insights/service";
 import { formatKoreanWon } from "@/lib/format";
 import { ArrowLeft, Building2 } from "lucide-react";
 
@@ -40,11 +42,13 @@ export default async function ProjectDetailPage({
     notFound();
   }
 
-  const [collectionJobs, latestInitialJob, panelStats] = await Promise.all([
-    getCollectionJobsByProject(id),
-    getLatestInitialJob(id),
-    getCollectionPanelStats(id),
-  ]);
+  const [collectionJobs, latestInitialJob, panelStats, insights] =
+    await Promise.all([
+      getCollectionJobsByProject(id),
+      getLatestInitialJob(id),
+      getCollectionPanelStats(id),
+      getProjectInsights(id),
+    ]);
 
   const hasCompletedInitial = latestInitialJob?.status === "COMPLETED";
   const latestJobDetail = latestInitialJob
@@ -142,6 +146,8 @@ export default async function ProjectDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      <ProjectInsightsPanel projectId={project.id} initialInsights={insights} />
 
       <InitialCollectionPanel
         projectId={project.id}

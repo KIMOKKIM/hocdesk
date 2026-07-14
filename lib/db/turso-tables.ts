@@ -13,6 +13,7 @@ export const TURSO_SCHEMA_TABLES = [
   { key: "suppressionListTable", table: "SuppressionList" },
   { key: "activityLogTable", table: "ActivityLog" },
   { key: "searchCandidateTable", table: "DiscoveredCandidate" },
+  { key: "projectInsightTable", table: "ProjectInsight" },
 ] as const;
 
 export type TursoTableKey = (typeof TURSO_SCHEMA_TABLES)[number]["key"];
