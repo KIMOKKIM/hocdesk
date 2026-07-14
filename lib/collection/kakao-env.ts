@@ -9,7 +9,6 @@ import "server-only";
 export const KAKAO_REST_API_KEY_ENV = "KAKAO_REST_API_KEY" as const;
 export const TARGET_SEARCH_PROVIDER_ENV = "TARGET_SEARCH_PROVIDER" as const;
 
-/** 잘못 쓰이기 쉬운 deprecated / 공개 변수명 (값 자체는 읽지 않거나 힌트만) */
 const DEPRECATED_KAKAO_ENV_NAMES = [
   "KAKAO_API_KEY",
   "NEXT_PUBLIC_KAKAO_REST_API_KEY",
@@ -17,31 +16,97 @@ const DEPRECATED_KAKAO_ENV_NAMES = [
   "KAKAO_JS_KEY",
 ] as const;
 
-function stripWrappingQuotes(value: string): string {
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1).trim();
+export type KakaoKeyInspection = {
+  present: boolean;
+  masked: string | null;
+  hasWrappingQuotes: boolean;
+  hasInternalWhitespace: boolean;
+  length: number;
+  warnings: string[];
+};
+
+function inspectRawKey(raw: string | undefined | null): KakaoKeyInspection {
+  if (raw == null) {
+    return {
+      present: false,
+      masked: null,
+      hasWrappingQuotes: false,
+      hasInternalWhitespace: false,
+      length: 0,
+      warnings: [],
+    };
   }
-  return trimmed;
+
+  const original = String(raw);
+  const trimmed = original.trim();
+  const hasWrappingQuotes =
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"));
+  const unquoted = hasWrappingQuotes
+    ? trimmed.slice(1, -1).trim()
+    : trimmed;
+  const hasInternalWhitespace = /\s/.test(unquoted);
+  const warnings: string[] = [];
+
+  if (hasWrappingQuotes) {
+    warnings.push(
+      "환경변수 값에 불필요한 따옴표가 포함되어 있습니다. Vercel에는 따옴표 없이 순수 키만 입력하세요.",
+    );
+  }
+  if (hasInternalWhitespace) {
+    warnings.push(
+      "API 키 값에 공백 또는 줄바꿈이 포함되어 있습니다. 값을 다시 복사해 주세요.",
+    );
+  }
+  if (original !== trimmed) {
+    warnings.push("API 키 값 앞뒤에 공백이 포함되어 있어 자동으로 제거합니다.");
+  }
+
+  if (!unquoted) {
+    return {
+      present: false,
+      masked: null,
+      hasWrappingQuotes,
+      hasInternalWhitespace,
+      length: 0,
+      warnings,
+    };
+  }
+
+  return {
+    present: true,
+    masked: unquoted.length <= 4 ? "****" : `****${unquoted.slice(-4)}`,
+    hasWrappingQuotes,
+    hasInternalWhitespace,
+    length: unquoted.length,
+    warnings,
+  };
 }
 
-/** 서버 전용: KAKAO_REST_API_KEY 원문 (없으면 null). 로그/응답에 쓰지 말 것. */
+/** 실제 API 호출용 키. 따옴표/공백을 정리한 값. 로그·응답에 쓰지 말 것. */
 export function getKakaoRestApiKey(): string | null {
   const raw = process.env.KAKAO_REST_API_KEY;
   if (raw == null) return null;
-  const key = stripWrappingQuotes(String(raw));
-  return key.length > 0 ? key : null;
+  const trimmed = String(raw).trim();
+  const unquoted =
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      ? trimmed.slice(1, -1).trim()
+      : trimmed;
+  return unquoted.length > 0 ? unquoted : null;
+}
+
+export function inspectKakaoRestApiKey(): KakaoKeyInspection {
+  return inspectRawKey(process.env.KAKAO_REST_API_KEY);
 }
 
 export function isKakaoApiConfigured(): boolean {
   return getKakaoRestApiKey() !== null;
 }
 
-/** 화면/API용 마스킹. 원문 키는 반환하지 않음. */
-export function maskKakaoApiKey(key: string | null = getKakaoRestApiKey()): string | null {
+export function maskKakaoApiKey(
+  key: string | null = getKakaoRestApiKey(),
+): string | null {
   if (!key) return null;
   if (key.length <= 4) return "****";
   return `****${key.slice(-4)}`;
@@ -57,6 +122,7 @@ export function getMisconfiguredKakaoEnvHints(): string[] {
       );
     }
   }
+  hints.push(...inspectKakaoRestApiKey().warnings);
   return hints;
 }
 
@@ -71,7 +137,9 @@ export function getKakaoEnvRuntimeMeta() {
   };
 }
 
-export function buildKakaoKeyMissingMessage(context: "local" | "vercel" | "auto" = "auto"): string {
+export function buildKakaoKeyMissingMessage(
+  context: "local" | "vercel" | "auto" = "auto",
+): string {
   const isVercel =
     context === "vercel" ||
     (context === "auto" && Boolean(process.env.VERCEL));
@@ -88,6 +156,9 @@ export function buildKakaoKeyMissingMessage(context: "local" | "vercel" | "auto"
     `.env에 입력한 뒤 개발 서버를 재시작하세요.`
   );
 }
+
+export const PERMISSION_DENIED_USER_MESSAGE =
+  "Kakao API가 요청을 거절했습니다. REST API 키가 맞는지, Kakao Developers 앱에서 Local API 사용이 가능한지, Vercel Production 환경변수에 올바른 키가 들어갔는지 확인하세요.";
 
 export type KakaoProviderStatusMessageKind =
   | "demo"

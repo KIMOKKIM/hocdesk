@@ -88,6 +88,17 @@ KAKAO_REST_API_KEY=<카카오 REST API 키>
 - Preview에만 추가하면 운영 사이트에서 인식되지 않습니다.
 - `NEXT_PUBLIC_` 접두사를 붙이면 안 됩니다 (클라이언트 노출 위험).
 - API 키 원문은 화면에 표시되지 않습니다 (마스킹 `****abcd`만 표시).
+- Vercel 값에는 **따옴표 없이** 순수 REST API 키만 입력하세요.
+- JavaScript 키 / Native 앱 키 / Admin 키는 사용하지 마세요.
+- Kakao Developers 앱에서 **카카오맵/로컬(OPEN_MAP_AND_LOCAL)** 서비스를 활성화해야 합니다.
+  비활성 시 Settings 연결 테스트가 `PERMISSION_DENIED` / `LOCAL_API_NOT_ALLOWED`로 실패합니다.
+
+로컬 재현 (키는 직접 넣지 않음):
+
+```bash
+curl -H "Authorization: KakaoAK <REST_API_KEY>" \
+  "https://dapi.kakao.com/v2/local/search/keyword.json?query=%EC%96%91%EC%A3%BC%20%ED%8F%90%EC%B0%A8%EC%9E%A5"
+```
 
 - `TURSO_*`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SESSION_SECRET`, `KAKAO_REST_API_KEY`는 **런타임**에 검증됩니다. 빌드 단계에서 미설정이어도 `next build`는 통과합니다.
 - 비밀키에 `NEXT_PUBLIC_` 접두사를 붙이지 마세요.

@@ -30,9 +30,11 @@ import { getProjectByIdOrSlug } from "@/lib/db/projects";
 import { assessDatabaseReadiness } from "@/lib/db/readiness";
 import { safeQuery } from "@/lib/db/safe-query";
 import { hasTursoEnv } from "@/lib/db/turso-env";
-import { formatKoreanWon } from "@/lib/format";
+import { formatDateTime, formatKoreanWon } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { getProjectInsightsSafe } from "@/lib/project-insights/service";
+import { JINWOONG_SALE_HIGHLIGHTS } from "@/lib/projects/jinwoong-sale-content";
+import { OPERATIONAL_PROJECT_ID } from "@/lib/seed/operational-seed";
 import { ArrowLeft, Building2 } from "lucide-react";
 
 type ProjectDetailPageProps = {
@@ -167,7 +169,7 @@ export default async function ProjectDetailPage({
 
   const projectId = project.id;
 
-  const [insightsResult, jobsResult, latestJobResult, panelStatsResult] =
+  const [insightsResult, jobsResult, latestJobResult, panelStatsResult, activitiesResult] =
     await Promise.all([
       safeQuery("insights", () => getProjectInsightsSafe(projectId), {
         insights: [],
@@ -177,12 +179,44 @@ export default async function ProjectDetailPage({
       safeQuery("collection-jobs", () => getCollectionJobsByProject(projectId), []),
       safeQuery("latest-initial-job", () => getLatestInitialJob(projectId), null),
       safeQuery("panel-stats", () => getCollectionPanelStats(projectId), emptyPanelStats()),
+      safeQuery(
+        "recent-activities",
+        async () => {
+          const rows = await prisma.dailyActivity.findMany({
+            where: { projectId },
+            orderBy: { activityDate: "desc" },
+            take: 5,
+            select: {
+              id: true,
+              activityType: true,
+              activityDate: true,
+              summary: true,
+              result: true,
+            },
+          });
+          return rows.map((row) => ({
+            id: row.id,
+            title: row.summary?.slice(0, 80) || row.activityType || "활동",
+            activityType: row.activityType,
+            summary: row.result ?? row.summary,
+            activityDateLabel: formatDateTime(row.activityDate),
+          }));
+        },
+        [] as Array<{
+          id: string;
+          title: string;
+          activityType: string;
+          summary: string | null;
+          activityDateLabel: string;
+        }>,
+      ),
     ]);
 
   const insightsLoad = insightsResult.data;
   const collectionJobs = jobsResult.data;
   const latestInitialJob = latestJobResult.data;
   const panelStats = panelStatsResult.data;
+  const recentActivities = activitiesResult.data;
 
   let latestJobDetail = null;
   if (latestInitialJob?.id) {
@@ -250,6 +284,18 @@ export default async function ProjectDetailPage({
             <Separator />
             <dl className="grid gap-3 sm:grid-cols-2">
               <div>
+                <dt className="text-muted-foreground">매각 주체</dt>
+                <dd className="font-medium">{project.companyName}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">위치</dt>
+                <dd className="font-medium">{project.location ?? "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">자산 유형</dt>
+                <dd className="font-medium">{project.projectType}</dd>
+              </div>
+              <div>
                 <dt className="text-muted-foreground">부동산 유형</dt>
                 <dd className="font-medium">{project.propertyType ?? "-"}</dd>
               </div>
@@ -258,6 +304,10 @@ export default async function ProjectDetailPage({
                 <dd className="font-medium">
                   {formatKoreanWon(project.askingPrice)}
                 </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">최근 업데이트</dt>
+                <dd className="font-medium">{project.updatedAtLabel}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">토지 면적</dt>
@@ -276,10 +326,6 @@ export default async function ProjectDetailPage({
               <div>
                 <dt className="text-muted-foreground">등록일</dt>
                 <dd className="font-medium">{project.createdAtLabel}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">지역</dt>
-                <dd className="font-medium">{project.location ?? "-"}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">프로젝트 ID</dt>
@@ -315,6 +361,21 @@ export default async function ProjectDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {projectId === OPERATIONAL_PROJECT_ID ? (
+        <Card className="border-border/80 shadow-sm">
+          <CardHeader>
+            <CardTitle>핵심 매각 정보</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="list-disc space-y-2 pl-5 text-sm leading-7 text-muted-foreground">
+              {JINWOONG_SALE_HIGHLIGHTS.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {insightsAvailable ? (
         <ProjectInsightsPanel
@@ -464,6 +525,60 @@ export default async function ProjectDetailPage({
                 <Badge>{target.targetGrade}등급</Badge>
               </Link>
             ))
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader>
+          <CardTitle>최근 활동</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">일일 활동</p>
+              <p className="mt-1 font-semibold">
+                {project._count?.dailyActivities ?? 0}건
+              </p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">신규 타깃(실제)</p>
+              <p className="mt-1 font-semibold">
+                {project._count?.projectCompanies ?? 0}곳
+              </p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs text-muted-foreground">아웃리치</p>
+              <p className="mt-1 font-semibold">
+                {project._count?.outreachs ?? 0}건
+              </p>
+            </div>
+          </div>
+          {!activitiesResult.ok ? (
+            <p className="text-muted-foreground">
+              활동 기록을 불러올 수 없습니다.
+            </p>
+          ) : recentActivities.length === 0 ? (
+            <p className="text-muted-foreground">아직 활동 기록이 없습니다.</p>
+          ) : (
+            <ul className="divide-y">
+              {recentActivities.map((activity) => (
+                <li key={activity.id} className="py-3 first:pt-0 last:pb-0">
+                  <Link
+                    href={`/activities/${activity.id}`}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {activity.title}
+                  </Link>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {activity.activityType} · {activity.activityDateLabel}
+                  </p>
+                  {activity.summary ? (
+                    <p className="mt-1 text-muted-foreground">{activity.summary}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>

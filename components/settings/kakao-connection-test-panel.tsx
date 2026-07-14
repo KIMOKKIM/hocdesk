@@ -14,6 +14,17 @@ type TestResult = {
   errorCode?: string;
   errorMessage?: string;
   message?: string;
+  checklist?: string[];
+  diagnostics?: {
+    keyPresent?: boolean;
+    keyMasked?: string | null;
+    endpoint?: string;
+    environment?: string;
+    vercel?: boolean;
+    keyWarnings?: string[];
+    kakaoErrorType?: string | null;
+    kakaoMessage?: string | null;
+  };
   results?: Array<{
     placeName: string;
     categoryName: string;
@@ -76,6 +87,8 @@ export function KakaoConnectionTestPanel({
         errorCode: data.errorCode,
         errorMessage: data.errorMessage ?? data.message,
         message: data.message,
+        checklist: data.checklist,
+        diagnostics: data.diagnostics,
         results: data.results,
       });
     } catch {
@@ -91,6 +104,15 @@ export function KakaoConnectionTestPanel({
       setLoading(false);
     }
   }
+
+  const showPermissionHelp =
+    result &&
+    !result.success &&
+    (result.errorCode === "PERMISSION_DENIED" ||
+      result.errorCode === "LOCAL_API_NOT_ALLOWED" ||
+      result.errorCode === "INVALID_APP_KEY_TYPE" ||
+      result.errorCode === "AUTHENTICATION_FAILED" ||
+      result.errorCode === "API_KEY_MISSING");
 
   return (
     <div className="space-y-4 rounded-lg border bg-muted/10 p-4">
@@ -177,12 +199,30 @@ export function KakaoConnectionTestPanel({
               {result.message ?? "DB 변경 없음"}
             </p>
           ) : null}
-          {!result.success && result.errorCode === "API_KEY_MISSING" ? (
+          {result.diagnostics?.kakaoErrorType ? (
             <p className="text-xs text-muted-foreground">
-              Vercel Dashboard → Settings → Environment Variables에서 Production
-              환경에 KAKAO_REST_API_KEY를 추가한 뒤 Redeploy하세요.
+              Kakao errorType: {result.diagnostics.kakaoErrorType}
+              {result.diagnostics.kakaoMessage
+                ? ` · ${result.diagnostics.kakaoMessage}`
+                : ""}
             </p>
           ) : null}
+
+          {showPermissionHelp ? (
+            <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
+              <p className="font-medium">Kakao 권한 오류 점검</p>
+              <ol className="list-decimal space-y-1 pl-5 text-xs">
+                {(result.checklist ?? []).map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ol>
+              <pre className="overflow-x-auto rounded border bg-background p-2 font-mono text-[11px] text-foreground">
+                {`curl -H "Authorization: KakaoAK <REST_API_KEY>" \\
+  "https://dapi.kakao.com/v2/local/search/keyword.json?query=%EC%96%91%EC%A3%BC%20%ED%8F%90%EC%B0%A8%EC%9E%A5"`}
+              </pre>
+            </div>
+          ) : null}
+
           {result.results && result.results.length > 0 ? (
             <ul className="divide-y">
               {result.results.map((item) => (

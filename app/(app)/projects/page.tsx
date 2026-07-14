@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { isProductionEnvironment } from "@/lib/db/database-provider";
 import { loadPageData } from "@/lib/db/errors";
 import { getProjects } from "@/lib/db/projects";
-import { Plus } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "매각 프로젝트",
@@ -56,21 +56,28 @@ export default async function ProjectsPage() {
       ) : (
         <div className="grid gap-4 xl:grid-cols-3">
           {projects.map((project) => (
-            <Link key={project.id} href={`/projects/${project.id}`}>
-              <Card className="border-border/80 shadow-sm transition-colors hover:border-primary/40">
-                <CardHeader className="flex flex-row items-start justify-between gap-4">
-                  <div>
-                    <CardTitle className="text-base">{project.name}</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {project.projectType}
-                    </p>
-                  </div>
-                  <Badge variant="secondary">{project.statusLabel}</Badge>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm">
+            <Card
+              key={project.id}
+              className="border-border/80 shadow-sm transition-colors hover:border-primary/40"
+            >
+              <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="text-base">{project.name}</CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {project.projectType}
+                  </p>
+                </div>
+                <Badge variant="secondary">{project.statusLabel}</Badge>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm">
+                <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">매각 주체</span>
                     <span>{project.companyName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">위치</span>
+                    <span>{project.location ?? "-"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">타깃 업체</span>
@@ -84,9 +91,18 @@ export default async function ProjectsPage() {
                     <span className="text-muted-foreground">최근 업데이트</span>
                     <span>{project.updatedAt}</span>
                   </div>
-                </CardContent>
-              </Card>
-            </Link>
+                </div>
+                <div className="flex justify-end border-t pt-3">
+                  <Button
+                    size="sm"
+                    render={<Link href={`/projects/${project.id}`} />}
+                  >
+                    상세보기
+                    <ArrowRight data-icon="inline-end" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

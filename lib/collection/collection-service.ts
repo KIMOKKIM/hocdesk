@@ -13,11 +13,13 @@ import {
   getCompletedInitialJob,
 } from "@/lib/collection/limits";
 import { collectionAudit, collectionError, collectionLog } from "@/lib/collection/logger";
+import { ApiError } from "@/lib/api/errors";
 import {
   assertKakaoProviderReady,
   getTargetSearchProvider,
   resolveSearchProviderName,
 } from "@/lib/collection/providers";
+import { hasBlockingKakaoPermissionError } from "@/lib/db/search-provider-status";
 import { CompositeSearchProvider } from "@/lib/collection/providers/composite-search-provider";
 import { KakaoLocalSearchProvider } from "@/lib/collection/providers/kakao-local-search-provider";
 import {
@@ -117,6 +119,16 @@ export async function createInitialCollectionJob({
   const providerName = resolveSearchProviderName(providerOverride);
   // Kakao/composite는 키 없으면 job을 만들지 않는다 (조용한 demo fallback 금지)
   assertKakaoProviderReady(providerName);
+  if (
+    (providerName === "kakao" || providerName === "composite") &&
+    (await hasBlockingKakaoPermissionError())
+  ) {
+    throw new ApiError(
+      "Kakao 연결 테스트가 실패한 상태입니다. Settings에서 Kakao 연결 테스트를 먼저 통과시킨 후 수집을 실행하세요.",
+      403,
+      "KAKAO_PERMISSION_BLOCKED",
+    );
+  }
 
   let searchPlan: SearchPlan = buildInitialSearchPlan(projectId, boundedRequest);
   if (providerName === "kakao" || providerName === "composite") {

@@ -33,6 +33,9 @@ type SettingsFormProps = {
     lastSuccessAt: string | null;
     lastErrorAt: string | null;
     lastErrorMessage: string | null;
+    lastTestErrorCode?: string | null;
+    lastTestMessage?: string | null;
+    lastTestSuccess?: boolean | null;
     limits: {
       dailyNewCompanies: number;
       maxPendingReview: number;
@@ -178,6 +181,21 @@ export function SettingsForm({
               </p>
             </div>
             <div>
+              <p className="text-muted-foreground">마지막 연결 테스트</p>
+              <p className="font-medium">
+                {searchProviderStatus.lastTestErrorCode
+                  ? `${searchProviderStatus.lastTestErrorCode}`
+                  : searchProviderStatus.lastTestSuccess
+                    ? "성공"
+                    : "-"}
+              </p>
+              {searchProviderStatus.lastTestMessage ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {searchProviderStatus.lastTestMessage}
+                </p>
+              ) : null}
+            </div>
+            <div>
               <p className="text-muted-foreground">환경</p>
               <p className="font-medium">
                 {searchProviderStatus.environment ?? "-"}
@@ -215,6 +233,38 @@ export function SettingsForm({
             <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive">
               지원하지 않는 TARGET_SEARCH_PROVIDER 값입니다.
             </p>
+          ) : null}
+
+          {searchProviderStatus.lastTestErrorCode === "PERMISSION_DENIED" ||
+          searchProviderStatus.lastTestErrorCode === "LOCAL_API_NOT_ALLOWED" ||
+          searchProviderStatus.lastTestErrorCode === "INVALID_APP_KEY_TYPE" ? (
+            <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
+              <p className="font-medium">Kakao 권한 오류 점검</p>
+              <ol className="list-decimal space-y-1 pl-5 text-xs">
+                <li>
+                  Kakao Developers → 내 애플리케이션 → 앱 키에서 REST API 키를
+                  복사했는지 확인
+                </li>
+                <li>
+                  JavaScript 키, Native 앱 키, Admin 키를 넣지 않았는지 확인
+                </li>
+                <li>
+                  Vercel Environment Variables의 Production에
+                  KAKAO_REST_API_KEY를 넣었는지 확인
+                </li>
+                <li>값 앞뒤에 공백이나 따옴표가 들어가지 않았는지 확인</li>
+                <li>저장 후 Redeploy했는지 확인</li>
+                <li>
+                  Kakao Local API 요청 URL이
+                  dapi.kakao.com/v2/local/search/keyword.json인지 확인
+                </li>
+                <li>Authorization 헤더가 KakaoAK 형식인지 확인</li>
+                <li>
+                  Kakao Developers에서 카카오맵/로컬(OPEN_MAP_AND_LOCAL)
+                  서비스가 활성화되어 있는지 확인
+                </li>
+              </ol>
+            </div>
           ) : null}
 
           {searchProviderStatus.misconfiguredHints &&

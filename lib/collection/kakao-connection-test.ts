@@ -2,22 +2,48 @@ import {
   validateIndustryFit,
   type IndustryValidationResult,
 } from "@/lib/collection/industry-validation";
-import { buildKakaoKeyMissingMessage } from "@/lib/collection/kakao-env";
 import {
+  buildKakaoKeyMissingMessage,
+  getKakaoEnvRuntimeMeta,
+  inspectKakaoRestApiKey,
   isKakaoApiConfigured,
+  maskKakaoApiKey,
+  PERMISSION_DENIED_USER_MESSAGE,
+} from "@/lib/collection/kakao-env";
+import {
   KakaoApiError,
   searchKakaoLocal,
 } from "@/lib/collection/providers/kakao-local-client";
+import { recordKakaoConnectionTest } from "@/lib/db/search-provider-status";
+import {
+  KAKAO_LOCAL_ENDPOINT,
+  KAKAO_PERMISSION_CHECKLIST,
+} from "@/lib/projects/jinwoong-sale-content";
 
 export type KakaoTestErrorCode =
   | "API_KEY_MISSING"
   | "AUTHENTICATION_FAILED"
   | "PERMISSION_DENIED"
+  | "INVALID_APP_KEY_TYPE"
+  | "LOCAL_API_NOT_ALLOWED"
   | "RATE_LIMITED"
   | "TIMEOUT"
   | "INVALID_RESPONSE"
   | "NO_RESULTS"
   | "NETWORK_ERROR";
+
+export type KakaoTestDiagnostics = {
+  keyPresent: boolean;
+  keyMasked: string | null;
+  endpoint: "keyword";
+  endpointUrl: string;
+  provider: "kakao";
+  environment: string;
+  vercel: boolean;
+  keyWarnings: string[];
+  kakaoErrorType?: string | null;
+  kakaoMessage?: string | null;
+};
 
 export type KakaoTestResult = {
   configured: boolean;
@@ -28,6 +54,8 @@ export type KakaoTestResult = {
   errorCode?: KakaoTestErrorCode;
   errorMessage?: string;
   message?: string;
+  diagnostics: KakaoTestDiagnostics;
+  checklist?: string[];
   results: Array<{
     placeName: string;
     categoryName: string;
@@ -39,9 +67,29 @@ export type KakaoTestResult = {
   }>;
 };
 
+function baseDiagnostics(
+  extras?: Partial<KakaoTestDiagnostics>,
+): KakaoTestDiagnostics {
+  const inspection = inspectKakaoRestApiKey();
+  const runtime = getKakaoEnvRuntimeMeta();
+  return {
+    keyPresent: inspection.present,
+    keyMasked: inspection.masked ?? maskKakaoApiKey(),
+    endpoint: "keyword",
+    endpointUrl: KAKAO_LOCAL_ENDPOINT,
+    provider: "kakao",
+    environment: runtime.environment,
+    vercel: runtime.vercel,
+    keyWarnings: inspection.warnings,
+    ...extras,
+  };
+}
+
 function mapKakaoError(error: unknown): {
   code: KakaoTestErrorCode;
   message: string;
+  kakaoErrorType?: string | null;
+  kakaoMessage?: string | null;
 } {
   if (error instanceof KakaoApiError) {
     switch (error.code) {
@@ -51,9 +99,33 @@ function mapKakaoError(error: unknown): {
           message: buildKakaoKeyMissingMessage("auto"),
         };
       case "UNAUTHORIZED":
-        return { code: "AUTHENTICATION_FAILED", message: error.message };
+        return {
+          code: "AUTHENTICATION_FAILED",
+          message: error.message,
+          kakaoErrorType: error.kakaoErrorType,
+          kakaoMessage: error.kakaoMessage,
+        };
+      case "LOCAL_API_NOT_ALLOWED":
+        return {
+          code: "LOCAL_API_NOT_ALLOWED",
+          message: error.message,
+          kakaoErrorType: error.kakaoErrorType,
+          kakaoMessage: error.kakaoMessage,
+        };
+      case "INVALID_APP_KEY_TYPE":
+        return {
+          code: "INVALID_APP_KEY_TYPE",
+          message: error.message,
+          kakaoErrorType: error.kakaoErrorType,
+          kakaoMessage: error.kakaoMessage,
+        };
       case "FORBIDDEN":
-        return { code: "PERMISSION_DENIED", message: error.message };
+        return {
+          code: "PERMISSION_DENIED",
+          message: PERMISSION_DENIED_USER_MESSAGE,
+          kakaoErrorType: error.kakaoErrorType,
+          kakaoMessage: error.kakaoMessage,
+        };
       case "QUOTA_EXCEEDED":
         return { code: "RATE_LIMITED", message: error.message };
       case "TIMEOUT":
@@ -70,13 +142,23 @@ function mapKakaoError(error: unknown): {
   };
 }
 
+function shouldAttachChecklist(code?: KakaoTestErrorCode) {
+  return (
+    code === "PERMISSION_DENIED" ||
+    code === "LOCAL_API_NOT_ALLOWED" ||
+    code === "INVALID_APP_KEY_TYPE" ||
+    code === "AUTHENTICATION_FAILED" ||
+    code === "API_KEY_MISSING"
+  );
+}
+
 export async function runKakaoConnectionTest(
   query: string,
   segmentName = "폐차장",
 ): Promise<KakaoTestResult> {
   if (!isKakaoApiConfigured()) {
     const message = buildKakaoKeyMissingMessage("auto");
-    return {
+    const result: KakaoTestResult = {
       configured: false,
       success: false,
       query,
@@ -85,8 +167,16 @@ export async function runKakaoConnectionTest(
       errorCode: "API_KEY_MISSING",
       errorMessage: message,
       message,
+      diagnostics: baseDiagnostics(),
+      checklist: [...KAKAO_PERMISSION_CHECKLIST],
       results: [],
     };
+    await recordKakaoConnectionTest({
+      success: false,
+      errorCode: "API_KEY_MISSING",
+      message,
+    });
+    return result;
   }
 
   const started = Date.now();
@@ -95,7 +185,7 @@ export async function runKakaoConnectionTest(
     const elapsedMs = Date.now() - started;
 
     if (response.documents.length === 0) {
-      return {
+      const result: KakaoTestResult = {
         configured: true,
         success: false,
         query,
@@ -104,8 +194,15 @@ export async function runKakaoConnectionTest(
         errorCode: "NO_RESULTS",
         errorMessage: "검색 결과가 없습니다.",
         message: "검색 결과가 없습니다.",
+        diagnostics: baseDiagnostics(),
         results: [],
       };
+      await recordKakaoConnectionTest({
+        success: false,
+        errorCode: "NO_RESULTS",
+        message: result.message,
+      });
+      return result;
     }
 
     const results = response.documents.slice(0, 5).map((place) => {
@@ -128,18 +225,25 @@ export async function runKakaoConnectionTest(
       };
     });
 
-    return {
+    const result: KakaoTestResult = {
       configured: true,
       success: true,
       query,
       resultCount: results.length,
       elapsedMs,
       message: "연결 테스트 성공. DB는 변경되지 않았습니다.",
+      diagnostics: baseDiagnostics(),
       results,
     };
+    await recordKakaoConnectionTest({
+      success: true,
+      errorCode: null,
+      message: result.message,
+    });
+    return result;
   } catch (error) {
     const mapped = mapKakaoError(error);
-    return {
+    const result: KakaoTestResult = {
       configured: mapped.code !== "API_KEY_MISSING",
       success: false,
       query,
@@ -148,7 +252,20 @@ export async function runKakaoConnectionTest(
       errorCode: mapped.code,
       errorMessage: mapped.message,
       message: mapped.message,
+      diagnostics: baseDiagnostics({
+        kakaoErrorType: mapped.kakaoErrorType ?? null,
+        kakaoMessage: mapped.kakaoMessage ?? null,
+      }),
+      checklist: shouldAttachChecklist(mapped.code)
+        ? [...KAKAO_PERMISSION_CHECKLIST]
+        : undefined,
       results: [],
     };
+    await recordKakaoConnectionTest({
+      success: false,
+      errorCode: mapped.code,
+      message: mapped.message,
+    });
+    return result;
   }
 }

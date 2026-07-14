@@ -12,6 +12,7 @@ import {
   getProviderDisplayName,
   resolveSearchProviderName,
 } from "@/lib/collection/providers";
+import { KAKAO_LOCAL_ENDPOINT } from "@/lib/projects/jinwoong-sale-content";
 import { prisma } from "@/lib/prisma";
 
 const STATUS_KEY = "search_provider_status";
@@ -20,7 +21,12 @@ type StoredProviderStatus = {
   lastSuccessAt?: string | null;
   lastErrorAt?: string | null;
   lastErrorMessage?: string | null;
+  lastProvider?: string | null;
   quotaStatus?: string | null;
+  lastTestAt?: string | null;
+  lastTestSuccess?: boolean | null;
+  lastTestErrorCode?: string | null;
+  lastTestMessage?: string | null;
 };
 
 export async function getStoredProviderStatus(): Promise<StoredProviderStatus> {
@@ -81,6 +87,48 @@ export async function recordProviderError(
   });
 }
 
+export async function recordKakaoConnectionTest(params: {
+  success: boolean;
+  errorCode?: string | null;
+  message?: string | null;
+}) {
+  const current = await getStoredProviderStatus();
+  const now = new Date().toISOString();
+  const next: StoredProviderStatus = {
+    ...current,
+    lastTestAt: now,
+    lastTestSuccess: params.success,
+    lastTestErrorCode: params.success ? null : params.errorCode ?? null,
+    lastTestMessage: params.message ?? null,
+    lastProvider: "kakao",
+  };
+
+  if (params.success) {
+    next.lastSuccessAt = now;
+  } else {
+    next.lastErrorAt = now;
+    next.lastErrorMessage = params.message ?? null;
+  }
+
+  await prisma.appSetting.upsert({
+    where: { key: STATUS_KEY },
+    create: { key: STATUS_KEY, value: next },
+    update: { value: next },
+  });
+}
+
+export async function hasBlockingKakaoPermissionError(): Promise<boolean> {
+  const stored = await getStoredProviderStatus();
+  if (stored.lastTestSuccess === true) return false;
+  const code = stored.lastTestErrorCode ?? "";
+  return (
+    code === "PERMISSION_DENIED" ||
+    code === "LOCAL_API_NOT_ALLOWED" ||
+    code === "INVALID_APP_KEY_TYPE" ||
+    code === "AUTHENTICATION_FAILED"
+  );
+}
+
 export async function getSearchProviderStatus() {
   let provider = "demo";
   let providerName = "DemoSearchProvider";
@@ -90,7 +138,8 @@ export async function getSearchProviderStatus() {
     provider = resolveSearchProviderName();
     providerName = getProviderDisplayName();
   } catch {
-    provider = (process.env.TARGET_SEARCH_PROVIDER ?? "unknown").trim() || "unknown";
+    provider =
+      (process.env.TARGET_SEARCH_PROVIDER ?? "unknown").trim() || "unknown";
     providerName = `알 수 없음 (${provider})`;
     providerValid = false;
   }
@@ -132,9 +181,15 @@ export async function getSearchProviderStatus() {
     apiKeyPresent,
     apiKeyMasked,
     targetSearchProvider: provider,
+    endpointReady: apiKeyPresent,
+    endpoint: KAKAO_LOCAL_ENDPOINT,
     lastSuccessAt: stored.lastSuccessAt ?? null,
     lastErrorAt: stored.lastErrorAt ?? null,
     lastErrorMessage: stored.lastErrorMessage ?? null,
+    lastTestAt: stored.lastTestAt ?? null,
+    lastTestSuccess: stored.lastTestSuccess ?? null,
+    lastTestErrorCode: stored.lastTestErrorCode ?? null,
+    lastTestMessage: stored.lastTestMessage ?? null,
     quotaStatus: stored.quotaStatus ?? null,
     message,
     statusKind: statusMessage.kind,
