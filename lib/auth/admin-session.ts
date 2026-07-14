@@ -25,8 +25,9 @@ export function getAdminCredentials(): {
   password: string;
 } | null {
   const username = process.env.ADMIN_USERNAME?.trim();
-  const password = process.env.ADMIN_PASSWORD;
-  if (!username || password === undefined || password === "") {
+  // Trim newlines accidentally introduced by `vercel env add` piping
+  const password = process.env.ADMIN_PASSWORD?.replace(/^\s+|\s+$/g, "");
+  if (!username || !password) {
     return null;
   }
   return { username, password };
