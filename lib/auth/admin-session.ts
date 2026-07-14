@@ -25,12 +25,31 @@ export function getAdminCredentials(): {
   password: string;
 } | null {
   const username = process.env.ADMIN_USERNAME?.trim();
-  // Trim newlines accidentally introduced by `vercel env add` piping
-  const password = process.env.ADMIN_PASSWORD?.replace(/^\s+|\s+$/g, "");
+  const password = resolveAdminPassword();
   if (!username || !password) {
     return null;
   }
   return { username, password };
+}
+
+/**
+ * Prefer ADMIN_PASSWORD_B64 when the password contains `$`
+ * (Next.js/Vercel env interpolation can corrupt `$...` values).
+ * Falls back to ADMIN_PASSWORD with whitespace trimmed.
+ */
+function resolveAdminPassword(): string | null {
+  const b64 = process.env.ADMIN_PASSWORD_B64?.trim();
+  if (b64) {
+    try {
+      const decoded = Buffer.from(b64, "base64").toString("utf8");
+      return decoded || null;
+    } catch {
+      return null;
+    }
+  }
+  const raw = process.env.ADMIN_PASSWORD;
+  if (raw === undefined || raw === "") return null;
+  return raw.replace(/^\s+|\s+$/g, "") || null;
 }
 
 export function isAdminProtectionEnabled(): boolean {
