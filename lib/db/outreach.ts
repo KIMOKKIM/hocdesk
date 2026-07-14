@@ -4,7 +4,7 @@ import {
 } from "@/lib/constants/status";
 import { prisma } from "@/lib/prisma";
 import { OUTREACH_LIMITS } from "@/lib/config/outreach-limits";
-import { demoCompanyExcludeWhere, resolveIncludeDemo } from "@/lib/demo-filter";
+import { demoCompanyExcludeWhere, shouldIncludeDemo } from "@/lib/demo-filter";
 
 export type OutreachFilters = {
   tab?: string;
@@ -26,7 +26,7 @@ export async function getOutreachStats(
   projectId?: string,
   includeDemoParam?: string,
 ) {
-  const includeDemo = resolveIncludeDemo(includeDemoParam);
+  const includeDemo = shouldIncludeDemo(includeDemoParam);
   const where = {
     ...(projectId ? { projectId } : {}),
     ...(includeDemo ? {} : { company: demoCompanyExcludeWhere() }),
@@ -98,7 +98,7 @@ export async function getOutreachPerformance(
   projectId?: string,
   includeDemoParam?: string,
 ) {
-  const includeDemo = resolveIncludeDemo(includeDemoParam);
+  const includeDemo = shouldIncludeDemo(includeDemoParam);
   const where = projectId ? { projectId } : {};
   const all = await prisma.outreach.findMany({
     where,
@@ -171,7 +171,7 @@ export async function getOutreachList(filters: OutreachFilters = {}) {
           { company: { companyName: { contains: filters.q } } },
         ]
       : undefined,
-    ...(resolveIncludeDemo(filters.includeDemo)
+    ...(shouldIncludeDemo(filters.includeDemo)
       ? {}
       : { company: demoCompanyExcludeWhere() }),
   };
@@ -199,7 +199,7 @@ export async function getRecentOutreach(
   includeDemoParam?: string,
   projectId?: string,
 ) {
-  const includeDemo = resolveIncludeDemo(includeDemoParam);
+  const includeDemo = shouldIncludeDemo(includeDemoParam);
   const items = await prisma.outreach.findMany({
     where: projectId ? { projectId } : undefined,
     orderBy: { updatedAt: "desc" },

@@ -5,11 +5,12 @@ import { ProjectStatus } from "@/lib/constants/status";
 import { isDatabaseSetupError } from "@/lib/db/errors";
 import {
   demoCompanyExcludeWhere,
-  resolveIncludeDemo,
+  filterOutDemoProjectCompanies,
+  shouldIncludeDemo,
 } from "@/lib/demo-filter";
 
 export async function getProjects() {
-  const includeDemo = resolveIncludeDemo();
+  const includeDemo = shouldIncludeDemo();
   const companyFilter = includeDemo ? {} : demoCompanyExcludeWhere();
 
   const projects = await prisma.project.findMany({
@@ -58,13 +59,15 @@ export async function getProjectOptions() {
   }));
 }
 
-function mapProjectDetail<T extends {
-  status: string;
-  askingPrice: bigint | null;
-  updatedAt: Date;
-  createdAt: Date;
-  desiredClosingDate: Date | null;
-}>(project: T) {
+function mapProjectDetail<
+  T extends {
+    status: string;
+    askingPrice: bigint | null;
+    updatedAt: Date;
+    createdAt: Date;
+    desiredClosingDate: Date | null;
+  },
+>(project: T) {
   return {
     ...project,
     statusLabel: projectStatusLabels[project.status] ?? project.status,
@@ -77,11 +80,10 @@ function mapProjectDetail<T extends {
 
 /**
  * Project.id로 조회.
- * (운영 seed id = seed_jinwoong_yangju_sale — slug 필드 없음)
- * 관계 테이블이 없으면 기본 정보만 반환한다.
+ * 운영에서는 데모 ProjectCompany를 강제 제외한다.
  */
 export async function getProjectByIdOrSlug(param: string) {
-  const includeDemo = resolveIncludeDemo();
+  const includeDemo = shouldIncludeDemo();
   const companyFilter = includeDemo ? {} : demoCompanyExcludeWhere();
 
   try {
@@ -92,32 +94,108 @@ export async function getProjectByIdOrSlug(param: string) {
           select: {
             projectCompanies: {
               where: {
-                reviewStatus: { not: "EXCLUDED" },
+                reviewStatus: { not: { in: ["EXCLUDED", "REJECTED"] } },
                 ...(includeDemo ? {} : { company: companyFilter }),
               },
             },
             outreachs: true,
             dailyActivities: true,
+            discoveredCandidates: {
+              where: {
+                validationStatus: {
+                  in: ["ACCEPTED", "REVIEW_REQUIRED", "DISCOVERED"],
+                },
+                isDuplicate: false,
+              },
+            },
           },
         },
         projectCompanies: {
           where: {
-            reviewStatus: { not: "EXCLUDED" },
+            reviewStatus: { not: { in: ["EXCLUDED", "REJECTED"] } },
             ...(includeDemo ? {} : { company: companyFilter }),
           },
           orderBy: { fitScore: "desc" },
-          take: 5,
+          take: 20,
           include: { company: true },
         },
       },
     });
 
     if (!project) return null;
-    return mapProjectDetail(project);
-  } catch (error) {
-    if (!isDatabaseSetupError(error)) throw error;
 
-    // 관계 테이블 미준비 시 기본 Project만 조회
+    const filteredCompanies = includeDemo
+      ? project.projectCompanies
+      : filterOutDemoProjectCompanies(project.projectCompanies).slice(0, 5);
+
+    const pendingCandidates = project._count.discoveredCandidates ?? 0;
+    const realTargetCount = includeDemo
+      ? project._count.projectCompanies
+      : Math.max(
+          filteredCompanies.length,
+          // Prisma 필터가 이미 적용된 카운트 (데모 제외)
+          project._count.projectCompanies,
+        );
+
+    return mapProjectDetail({
+      ...project,
+      projectCompanies: filteredCompanies,
+      _count: {
+        ...project._count,
+        projectCompanies:
+          !includeDemo && filteredCompanies.length === 0
+            ? 0
+            : realTargetCount,
+        pendingCandidates,
+      },
+    });
+  } catch (error) {
+    if (!isDatabaseSetupError(error)) {
+      // discoveredCandidates count 미지원 등 → 단순 조회로 재시도
+      try {
+        const project = await prisma.project.findUnique({
+          where: { id: param },
+          include: {
+            _count: {
+              select: {
+                projectCompanies: {
+                  where: {
+                    reviewStatus: { not: "EXCLUDED" },
+                    ...(includeDemo ? {} : { company: companyFilter }),
+                  },
+                },
+                outreachs: true,
+                dailyActivities: true,
+              },
+            },
+            projectCompanies: {
+              where: {
+                reviewStatus: { not: "EXCLUDED" },
+                ...(includeDemo ? {} : { company: companyFilter }),
+              },
+              orderBy: { fitScore: "desc" },
+              take: 20,
+              include: { company: true },
+            },
+          },
+        });
+        if (!project) return null;
+        const filteredCompanies = includeDemo
+          ? project.projectCompanies
+          : filterOutDemoProjectCompanies(project.projectCompanies).slice(0, 5);
+        return mapProjectDetail({
+          ...project,
+          projectCompanies: filteredCompanies,
+          _count: {
+            ...project._count,
+            pendingCandidates: 0,
+          },
+        });
+      } catch (inner) {
+        if (!isDatabaseSetupError(inner)) throw inner;
+      }
+    }
+
     try {
       const basic = await prisma.project.findUnique({ where: { id: param } });
       if (!basic) return null;
@@ -127,6 +205,7 @@ export async function getProjectByIdOrSlug(param: string) {
           projectCompanies: 0,
           outreachs: 0,
           dailyActivities: 0,
+          pendingCandidates: 0,
         },
         projectCompanies: [],
       });

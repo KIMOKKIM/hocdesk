@@ -210,12 +210,29 @@ export function CollectionJobProgressPanel({
         />
         <ProgressStat label="API 호출" value={`${counts.apiCallCount}회`} />
         <ProgressStat label="원본 결과" value={`${counts.rawResultCount}건`} />
-        <ProgressStat label="신규" value={`${counts.acceptedCount}`} />
+        <ProgressStat label="ACCEPT/신규" value={`${counts.acceptedCount}`} />
+        <ProgressStat label="REVIEW" value={`${counts.reviewRequiredCount}`} />
+        <ProgressStat label="REJECT" value={`${counts.rejectedCount}`} />
         <ProgressStat label="중복" value={`${counts.duplicateCount}`} />
-        <ProgressStat label="제외" value={`${counts.rejectedCount}`} />
         <ProgressStat
-          label="검토 필요"
-          value={`${counts.reviewRequiredCount}`}
+          label="검색 후보 저장"
+          value={`${
+            typeof (displayJob.jobStats as { candidatesCreated?: number } | null)
+              ?.candidatesCreated === "number"
+              ? (displayJob.jobStats as { candidatesCreated: number })
+                  .candidatesCreated
+              : counts.acceptedCount
+          }건`}
+        />
+        <ProgressStat
+          label="타깃 업체 등록"
+          value={`${
+            typeof (displayJob.jobStats as { companiesImported?: number } | null)
+              ?.companiesImported === "number"
+              ? (displayJob.jobStats as { companiesImported: number })
+                  .companiesImported
+              : 0
+          }건`}
         />
         <ProgressStat
           label="마지막 업데이트"

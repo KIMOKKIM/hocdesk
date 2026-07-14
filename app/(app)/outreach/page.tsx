@@ -6,7 +6,7 @@ import { DemoDataToggle } from "@/components/ui/demo-data-toggle";
 import { PageHeader } from "@/components/ui/page-header";
 import { loadPageData } from "@/lib/db/errors";
 import { getOutreachList, getOutreachStats } from "@/lib/db/outreach";
-import { resolveIncludeDemo } from "@/lib/demo-filter";
+import { shouldIncludeDemo } from "@/lib/demo-filter";
 
 export const metadata: Metadata = {
   title: "이메일 관리",
@@ -20,7 +20,7 @@ export default async function OutreachPage({ searchParams }: OutreachPageProps) 
   const params = await searchParams;
   const tab = params.tab ?? "ALL";
   const q = params.q ?? "";
-  const includeDemo = resolveIncludeDemo(params.includeDemo);
+  const includeDemo = shouldIncludeDemo(params.includeDemo);
 
   const pageData = await loadPageData(() =>
     Promise.all([

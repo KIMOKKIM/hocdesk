@@ -62,10 +62,10 @@ export function stalledProgressWarning(
   if (Number.isNaN(at.getTime())) return null;
   const elapsedMs = Date.now() - at.getTime();
   if (elapsedMs >= 180_000) {
-    return "작업이 멈춘 것으로 보입니다. 수집 이력을 확인하거나 재시도하세요.";
+    return "이 작업은 오래 갱신되지 않았습니다. 수집 이력에서 상태를 확인하거나 새 작업을 시작하세요.";
   }
   if (elapsedMs >= 60_000) {
-    return "진행상태 갱신이 지연되고 있습니다.";
+    return "진행상태 갱신이 지연되고 있습니다. 잠시 후 새로고침하거나 수집 이력을 확인하세요.";
   }
   return null;
 }

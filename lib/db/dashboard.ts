@@ -8,7 +8,7 @@ import type { ActivityAnalysisResult } from "@/lib/analysis/types";
 import { formatDateTime } from "@/lib/format";
 import { getAllExpansionSuggestions } from "@/lib/db/expansion-suggestions";
 import { getOutreachPerformance, getOutreachStats } from "@/lib/db/outreach";
-import { demoCompanyExcludeWhere, resolveIncludeDemo } from "@/lib/demo-filter";
+import { demoCompanyExcludeWhere, shouldIncludeDemo } from "@/lib/demo-filter";
 
 function startOfToday() {
   const date = new Date();
@@ -17,7 +17,7 @@ function startOfToday() {
 }
 
 export async function getDashboardStats(includeDemoParam?: string) {
-  const includeDemo = resolveIncludeDemo(includeDemoParam);
+  const includeDemo = shouldIncludeDemo(includeDemoParam);
   const today = startOfToday();
   const companyFilter = includeDemo ? {} : { company: demoCompanyExcludeWhere() };
 

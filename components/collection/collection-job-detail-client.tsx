@@ -75,21 +75,90 @@ export function CollectionJobDetailClient({ job: initialJob }: { job: JobDetail 
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <InfoCard label="상태" value={initialJob.statusLabel} />
+        <InfoCard
+          label="실행 모드"
+          value={
+            (initialJob.jobStats as { dryRun?: boolean; importMode?: string } | null)
+              ?.dryRun
+              ? "미리보기"
+              : (initialJob.jobStats as { importMode?: string } | null)?.importMode ===
+                  "review"
+                ? "후보 저장"
+                : (initialJob.jobStats as { importMode?: string } | null)?.importMode ===
+                    "fast"
+                  ? "DB 등록"
+                  : initialJob.status === "DRY_RUN"
+                    ? "미리보기"
+                    : "-"
+          }
+        />
+        <InfoCard
+          label="검색 후보 저장"
+          value={`${
+            (initialJob.jobStats as { candidatesCreated?: number } | null)
+              ?.candidatesCreated ??
+            (initialJob.status === "DRY_RUN" ? initialJob.acceptedCount : 0)
+          }건`}
+        />
+        <InfoCard
+          label="타깃 업체 등록"
+          value={`${
+            (initialJob.jobStats as { companiesImported?: number } | null)
+              ?.companiesImported ??
+            (initialJob.status === "COMPLETED" &&
+            (initialJob.jobStats as { importMode?: string } | null)?.importMode !==
+              "review"
+              ? initialJob.acceptedCount
+              : 0)
+          }건`}
+        />
         <InfoCard label="실행 시간" value={initialJob.startedAt ?? initialJob.createdAt} />
         <InfoCard label="완료 시간" value={initialJob.completedAt ?? "-"} />
         <InfoCard label="요청 건수" value={`${initialJob.requestedCount}건`} />
+        <InfoCard label="원본 결과" value={`${initialJob.rawResultCount ?? 0}건`} />
         <InfoCard label="처리" value={`${initialJob.collectedCount}건`} />
-        <InfoCard label="신규" value={`${initialJob.acceptedCount}건`} />
+        <InfoCard label="ACCEPT/신규" value={`${initialJob.acceptedCount}건`} />
         <InfoCard label="중복" value={`${initialJob.duplicateCount}건`} />
-        <InfoCard label="제외" value={`${initialJob.rejectedCount}건`} />
+        <InfoCard label="REJECT" value={`${initialJob.rejectedCount}건`} />
       </div>
+
+      {initialJob.lastMessage ? (
+        <Card className="border-border/80 shadow-sm">
+          <CardContent className="pt-6 text-sm">
+            <p className="font-medium">결과 요약</p>
+            <p className="mt-2 text-muted-foreground">{initialJob.lastMessage}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                render={
+                  <Link href={`/search-candidates?jobId=${initialJob.id}`} />
+                }
+              >
+                관련 검색 후보
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                render={
+                  <Link href={`/targets?projectId=${initialJob.projectId}`} />
+                }
+              >
+                관련 타깃 업체
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <SearchPlanCard searchPlan={initialJob.searchPlan} requestedCount={initialJob.requestedCount} />
       <QualityReportCard job={initialJob} />
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>생성·연결된 업체 ({initialJob.companies.length}건)</CardTitle>
+          <CardTitle>
+            생성·연결된 업체 ({initialJob.companies.length}건)
+          </CardTitle>
           <div className="flex gap-2 text-sm text-muted-foreground">
             <span>A {initialJob.gradeCounts.A}</span>
             <span>B {initialJob.gradeCounts.B}</span>

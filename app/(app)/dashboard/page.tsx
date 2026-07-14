@@ -20,7 +20,7 @@ import {
   outreachApprovalLabels,
   outreachStatusLabels,
 } from "@/lib/constants/labels";
-import { resolveIncludeDemo } from "@/lib/demo-filter";
+import { shouldIncludeDemo } from "@/lib/demo-filter";
 import { formatDateTime } from "@/lib/format";
 
 export const metadata: Metadata = {
@@ -33,7 +33,7 @@ type DashboardPageProps = {
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const params = await searchParams;
-  const includeDemo = resolveIncludeDemo(params.includeDemo);
+  const includeDemo = shouldIncludeDemo(params.includeDemo);
 
   const pageData = await loadPageData(() =>
     Promise.all([

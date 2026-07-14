@@ -224,7 +224,39 @@ https://hocdesk.pe.kr/Jinwoong/dashboard
 
 ---
 
-## 7. 로컬 개발
+## 9. 운영 데모 데이터 제거 / stuck job 정리
+
+로컬 `.env`를 **Turso 운영 DB**로 맞춘 뒤 실행합니다. Project·실제 Kakao 업체는 삭제하지 않습니다.
+
+```bash
+# .env 예시
+DATABASE_PROVIDER=turso
+TURSO_DATABASE_URL=libsql://...
+TURSO_AUTH_TOKEN=...
+
+# 1) 데모 삭제 대상 확인 (dry-run)
+npm run cleanup:demo
+
+# 2) 확인 후 적용
+npm run cleanup:demo:apply
+
+# 3) RUNNING 고착 작업 확인
+npm run jobs:fix-stuck
+
+# 4) 확인 후 FAILED 처리
+npm run jobs:fix-stuck:apply
+```
+
+적용 후 Vercel에서 `/Jinwoong/projects/...` 페이지를 새로고침합니다.
+
+주의:
+- `INCLUDE_DEMO_DATA=false` (운영 기본)
+- Project / AppSetting / 실제 Kakao 업체는 삭제되지 않음
+- 삭제 기준이 애매하면 REVIEW 목록만 출력하고 삭제하지 않음
+
+---
+
+## 10. 로컬 개발
 
 ```bash
 cp .env.example .env
@@ -250,17 +282,18 @@ BASE_URL=http://localhost:3000/Jinwoong npm run verify:deployment
 
 ---
 
-## 9. Vercel에서 사용자가 설정할 항목
+## 11. Vercel에서 사용자가 설정할 항목
 
 1. Git 연결 및 Deploy
 2. 환경변수 (섹션 2) — 특히 `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SESSION_SECRET`
 3. Turso DB 생성 후 대시보드 초기화 또는 `turso:setup`
 4. 도메인 시나리오 A 또는 B 선택
 5. (선택) Kakao API 키 설정 후 Settings 연결 테스트
+6. (필수 권장) 섹션 9 데모 cleanup + stuck job 정리
 
 ---
 
-## 10. 제한
+## 12. 제한
 
 - Cron 자동 활성화 없음
 - Gmail 실발송 미구현 (`EMAIL_PROVIDER=console`)

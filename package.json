@@ -25,7 +25,9 @@
     "check:secrets": "tsx scripts/check-secrets.ts",
     "verify:deployment": "tsx scripts/verify-deployment.ts",
     "cleanup:demo": "tsx scripts/cleanup-demo-data.ts",
-    "cleanup:demo:apply": "tsx scripts/cleanup-demo-data.ts --apply"
+    "cleanup:demo:apply": "tsx scripts/cleanup-demo-data.ts --apply",
+    "jobs:fix-stuck": "tsx scripts/fix-stuck-collection-jobs.ts",
+    "jobs:fix-stuck:apply": "tsx scripts/fix-stuck-collection-jobs.ts --apply"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

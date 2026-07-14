@@ -478,10 +478,12 @@ export default async function ProjectDetailPage({
           {!project.projectCompanies || project.projectCompanies.length === 0 ? (
             <div className="space-y-4 rounded-lg border border-dashed p-6">
               <div>
-                <p className="font-medium">아직 실제 타깃 업체가 없습니다</p>
+                <p className="font-medium">아직 실제 타깃 업체가 없습니다.</p>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  카카오 실제 업체 검색을 실행하면 검토대기 상태의 실제 업체가
-                  이곳에 표시됩니다.
+                  {(project._count as { pendingCandidates?: number })
+                    ?.pendingCandidates
+                    ? `검색 후보 ${(project._count as { pendingCandidates?: number }).pendingCandidates}건이 있습니다. 후보를 승인하면 타깃 업체에 표시됩니다.`
+                    : "카카오 실제 업체 검색(미리보기) 후 검색 후보에서 승인하거나, DB 등록 모드로 수집하면 이곳에 표시됩니다."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

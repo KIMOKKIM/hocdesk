@@ -14,7 +14,7 @@ import {
   getTargetFilterOptions,
   getTargets,
 } from "@/lib/db/targets";
-import { resolveIncludeDemo } from "@/lib/demo-filter";
+import { shouldIncludeDemo } from "@/lib/demo-filter";
 import { Plus } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -57,7 +57,7 @@ export default async function TargetsPage({ searchParams }: TargetsPageProps) {
   }
 
   const [targets, filterOptions] = pageData;
-  const includeDemo = resolveIncludeDemo(filters.includeDemo);
+  const includeDemo = shouldIncludeDemo(filters.includeDemo);
 
   return (
     <div className="space-y-6">

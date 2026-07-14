@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CollectionJobProgressPanel } from "@/components/collection/collection-job-progress-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -118,12 +119,14 @@ export function InitialCollectionPanel({
   initialJobs,
   initialJobDetail = null,
 }: InitialCollectionPanelProps) {
+  const router = useRouter();
   const [jobs, setJobs] = useState(initialJobs);
   const [latestJob, setLatestJob] = useState<CollectionJobDetail | null>(
     initialJobDetail,
   );
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [completionNotice, setCompletionNotice] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -160,8 +163,16 @@ export function InitialCollectionPanel({
     setExecutionMode("preview");
     setImportMode("review");
     setConfirmRegister(false);
+    setCompletionNotice(null);
     setShowConfirm(true);
     void loadKeywordWarnings();
+  }
+
+  function selectExecutionMode(mode: "preview" | "register") {
+    setExecutionMode(mode);
+    // 미리보기 → 후보만 저장 / DB 등록 → Company·ProjectCompany 즉시 생성
+    setImportMode(mode === "preview" ? "review" : "fast");
+    if (mode === "preview") setConfirmRegister(false);
   }
 
   const fetchJobDetail = useCallback(async (jobId: string) => {
@@ -444,15 +455,14 @@ export function InitialCollectionPanel({
                   type="radio"
                   name="executionMode"
                   checked={executionMode === "preview"}
-                  onChange={() => {
-                    setExecutionMode("preview");
-                    setConfirmRegister(false);
-                  }}
+                  onChange={() => selectExecutionMode("preview")}
                 />
                 <span>
                   <span className="font-medium">미리보기만 (권장)</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    검색·검증·중복검사만 수행. Company DB 등록 없음.
+                    Kakao 결과를 검색 후보에만 저장합니다. 타깃 업체 목록에는
+                    바로 나타나지 않으며, 검색 후보 화면에서 선택 등록이
+                    필요합니다.
                   </span>
                 </span>
               </label>
@@ -461,12 +471,13 @@ export function InitialCollectionPanel({
                   type="radio"
                   name="executionMode"
                   checked={executionMode === "register"}
-                  onChange={() => setExecutionMode("register")}
+                  onChange={() => selectExecutionMode("register")}
                 />
                 <span>
                   <span className="font-medium">DB에 등록</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    후보 확인 후 등록. 아래에서 확인 체크가 필요합니다.
+                    ACCEPT 후보를 Company/ProjectCompany로 바로 등록합니다.
+                    타깃 업체에 NEW/PENDING으로 표시됩니다.
                   </span>
                 </span>
               </label>
@@ -480,28 +491,19 @@ export function InitialCollectionPanel({
                   onChange={(e) => setConfirmRegister(e.target.checked)}
                 />
                 <span>
-                  검색 후보를 DB에 등록합니다. 등록된 업체는 NEW/PENDING
+                  DB 등록 모드로 실행합니다. 등록된 업체는 NEW/PENDING
                   상태이며 자동 이메일 발송 대상이 되지 않습니다.
                 </span>
               </label>
-            ) : null}
-            {selectedProvider !== "demo" ? (
+            ) : (
+              <p className="mt-3 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                미리보기 모드에서는 타깃 업체가 갱신되지 않습니다. 완료 후
+                검색 후보 메뉴에서 승인하세요.
+              </p>
+            )}
+            {selectedProvider !== "demo" && executionMode === "register" ? (
               <div className="mt-4 space-y-2">
                 <p className="text-sm font-medium">등록 모드</p>
-                <label className="flex cursor-pointer gap-3 rounded-lg border p-3">
-                  <input
-                    type="radio"
-                    name="importMode"
-                    checked={importMode === "review"}
-                    onChange={() => setImportMode("review")}
-                  />
-                  <span>
-                    <span className="font-medium">검토 모드 (기본)</span>
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      후보를 검토 목록에 저장 후 관리자 승인.
-                    </span>
-                  </span>
-                </label>
                 <label className="flex cursor-pointer gap-3 rounded-lg border p-3">
                   <input
                     type="radio"
@@ -510,9 +512,23 @@ export function InitialCollectionPanel({
                     onChange={() => setImportMode("fast")}
                   />
                   <span>
-                    <span className="font-medium">빠른 등록</span>
+                    <span className="font-medium">즉시 DB 등록 (기본)</span>
                     <span className="mt-1 block text-xs text-muted-foreground">
-                      ACCEPT만 바로 Company 등록.
+                      ACCEPT 결과를 Company/ProjectCompany로 등록합니다.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex cursor-pointer gap-3 rounded-lg border p-3">
+                  <input
+                    type="radio"
+                    name="importMode"
+                    checked={importMode === "review"}
+                    onChange={() => setImportMode("review")}
+                  />
+                  <span>
+                    <span className="font-medium">후보만 저장 후 승인</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      검색 후보에만 저장하고, 관리자가 선택 승인합니다.
                     </span>
                   </span>
                 </label>
@@ -633,6 +649,10 @@ export function InitialCollectionPanel({
                     job.status === "DRY_RUN"
                   ) {
                     void fetchJobs();
+                    if (job.lastMessage) {
+                      setCompletionNotice(job.lastMessage);
+                    }
+                    router.refresh();
                   }
                 }}
               />
@@ -642,6 +662,12 @@ export function InitialCollectionPanel({
               </p>
             )}
           </div>
+        ) : null}
+
+        {completionNotice ? (
+          <p className="rounded-lg border border-sky-300 bg-sky-50 p-3 text-sm text-sky-950 dark:bg-sky-950/20 dark:text-sky-100">
+            {completionNotice}
+          </p>
         ) : null}
 
         {error ? (

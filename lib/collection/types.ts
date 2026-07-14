@@ -133,6 +133,10 @@ export type CollectionJobStats = {
     duplicate: number;
     rejected: number;
   }>;
+  dryRun?: boolean;
+  importMode?: "review" | "fast";
+  candidatesCreated?: number;
+  companiesImported?: number;
 };
 
 export type CollectionJobResult = {

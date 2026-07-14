@@ -10,7 +10,7 @@ import {
   isDemoCompany,
   sourceTypeLabel,
 } from "@/lib/collection/source-display";
-import { resolveIncludeDemo } from "@/lib/demo-filter";
+import { shouldIncludeDemo } from "@/lib/demo-filter";
 
 export type TargetFilters = {
   q?: string;
@@ -250,7 +250,7 @@ export async function getTargets(filters: TargetFilters = {}) {
     };
   })
     .filter((target) =>
-      resolveIncludeDemo(filters.includeDemo) ? true : !target.isDemo,
+      shouldIncludeDemo(filters.includeDemo) ? true : !target.isDemo,
     );
 }
 

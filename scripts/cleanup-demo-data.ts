@@ -247,6 +247,16 @@ async function main() {
       `남은 Project: ${await prisma.project.count()} (진웅산업 프로젝트 유지)`,
     );
     console.log(`남은 Company: ${await prisma.company.count()}`);
+
+    const remainingDemo = await prisma.company.findMany({
+      where: { companyName: { contains: "데모" } },
+      select: { id: true, companyName: true },
+      take: 20,
+    });
+    console.log(`남은 데모 Company(이름 기준): ${remainingDemo.length}`);
+    for (const c of remainingDemo) {
+      console.log(`- ${c.companyName} (${c.id})`);
+    }
   } finally {
     await prisma.$disconnect();
   }

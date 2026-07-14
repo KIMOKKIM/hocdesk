@@ -7,8 +7,12 @@ import {
   createInitialCollectionJob,
   runCollectionJob,
 } from "@/lib/collection/collection-service";
-import { getCollectionJobDetail } from "@/lib/db/collection-jobs";
 import { collectionError } from "@/lib/collection/logger";
+import { updateJobProgress } from "@/lib/collection/progress";
+import { CollectionProgressStep } from "@/lib/collection/progress-shared";
+import { getCollectionJobDetail } from "@/lib/db/collection-jobs";
+import { CollectionJobStatus } from "@/lib/constants/status";
+import { prisma } from "@/lib/prisma";
 
 type RouteParams = { params: Promise<{ projectId: string }> };
 
@@ -52,6 +56,31 @@ export async function POST(request: Request, { params }: RouteParams) {
         });
       } catch (error) {
         collectionError(jobId, "after() 수집 실행 실패", error);
+        try {
+          const current = await prisma.targetCollectionJob.findUnique({
+            where: { id: jobId },
+            select: { status: true },
+          });
+          if (
+            current &&
+            (current.status === CollectionJobStatus.QUEUED ||
+              current.status === CollectionJobStatus.RUNNING ||
+              current.status === CollectionJobStatus.CANCEL_REQUESTED)
+          ) {
+            await updateJobProgress(jobId, {
+              status: CollectionJobStatus.FAILED,
+              currentStep: CollectionProgressStep.FAILED,
+              completedAt: new Date(),
+              errorMessage:
+                error instanceof Error
+                  ? error.message
+                  : "수집 작업이 비정상 종료되었습니다.",
+              lastMessage: "수집 작업이 실패했습니다.",
+            });
+          }
+        } catch (markError) {
+          collectionError(jobId, "after() 실패 상태 기록 실패", markError);
+        }
       }
     });
 

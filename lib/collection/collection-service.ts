@@ -279,8 +279,10 @@ export async function runCollectionJob(
   let withPhone = 0;
   let withoutWebsite = 0;
   let withoutEmail = 0;
+  let executionStarted = false;
 
   try {
+    executionStarted = true;
     await updateJobProgress(job.id, {
       status: CollectionJobStatus.RUNNING,
       currentStep: CollectionProgressStep.BUILDING_PLAN,
@@ -356,18 +358,24 @@ export async function runCollectionJob(
         ? CollectionJobStatus.DRY_RUN
         : CollectionJobStatus.COMPLETED;
 
-      const emptyStats = buildJobStats({
-        provider: providerName,
-        searchPlan,
-        kakaoContext,
-        collectedCount: 0,
-        acceptedCount: 0,
-        duplicateCount: 0,
-        rejectedCount: industryRejected,
-        withPhone: 0,
-        withoutWebsite: 0,
-        withoutEmail: 0,
-      });
+      const emptyStats = {
+        ...buildJobStats({
+          provider: providerName,
+          searchPlan,
+          kakaoContext,
+          collectedCount: 0,
+          acceptedCount: 0,
+          duplicateCount: 0,
+          rejectedCount: industryRejected,
+          withPhone: 0,
+          withoutWebsite: 0,
+          withoutEmail: 0,
+        }),
+        dryRun,
+        importMode,
+        candidatesCreated: 0,
+        companiesImported: 0,
+      };
 
       await updateJobProgress(job.id, {
         status: emptyStatus,
@@ -604,23 +612,46 @@ export async function runCollectionJob(
       withoutEmail,
     });
 
+    const usedReviewQueue = isExternal && (importMode === "review" || dryRun);
     const finalStatus = dryRun
       ? CollectionJobStatus.DRY_RUN
       : CollectionJobStatus.COMPLETED;
 
     const completionMessage = dryRun
       ? acceptedCount > 0
-        ? `미리보기 완료: 후보 ${acceptedCount}건`
-        : "미리보기 모드로 검색 후보만 생성되었습니다. 후보 목록에서 선택 등록하세요."
-      : acceptedCount > 0
-        ? `수집 완료: 신규 ${acceptedCount}곳 등록`
-        : duplicateCount > 0 && rejectedCount === 0
-          ? "신규 업체는 없고 기존 등록 업체와 중복되었습니다."
-          : (kakaoContext?.rawResultCount ?? 0) > 0 && rejectedCount > 0
-            ? "검색 결과는 있었지만 업종 적합성 검증에서 모두 제외되었습니다."
-            : (kakaoContext?.rawResultCount ?? 0) === 0
-              ? "검색은 완료되었지만 Kakao에서 해당 조건의 업체를 찾지 못했습니다."
-              : "수집 작업이 완료되었습니다.";
+        ? `미리보기 모드로 실행되어 타깃 업체에는 아직 등록되지 않았습니다. 검색 후보 ${acceptedCount}건이 저장되었습니다. 검색 후보 메뉴에서 선택 등록하세요.`
+        : (kakaoContext?.rawResultCount ?? 0) === 0
+          ? "검색은 완료되었지만 Kakao에서 해당 조건의 업체를 찾지 못했습니다."
+          : rejectedCount > 0
+            ? "검색 결과는 있었지만 업종 검증에서 제외되었습니다."
+            : "미리보기 검색이 완료되었지만 저장할 후보가 없습니다."
+      : usedReviewQueue
+        ? acceptedCount > 0
+          ? `검색 후보 ${acceptedCount}건이 저장되었습니다. 검색 후보 메뉴에서 선택 등록하세요.`
+          : duplicateCount > 0 && rejectedCount === 0
+            ? "신규 업체는 없고 기존 업체와 중복되었습니다."
+            : (kakaoContext?.rawResultCount ?? 0) > 0 && rejectedCount > 0
+              ? "검색 결과는 있었지만 업종 검증에서 제외되었습니다."
+              : (kakaoContext?.rawResultCount ?? 0) === 0
+                ? "검색은 완료되었지만 Kakao에서 해당 조건의 업체를 찾지 못했습니다."
+                : "수집 작업이 완료되었습니다."
+        : acceptedCount > 0
+          ? `신규 타깃 업체 ${acceptedCount}곳이 등록되었습니다.`
+          : duplicateCount > 0 && rejectedCount === 0
+            ? "신규 업체는 없고 기존 업체와 중복되었습니다."
+            : (kakaoContext?.rawResultCount ?? 0) > 0 && rejectedCount > 0
+              ? "검색 결과는 있었지만 업종 검증에서 제외되었습니다."
+              : (kakaoContext?.rawResultCount ?? 0) === 0
+                ? "검색은 완료되었지만 Kakao에서 해당 조건의 업체를 찾지 못했습니다."
+                : "수집 작업이 완료되었습니다.";
+
+    const enrichedStats = {
+      ...jobStats,
+      dryRun,
+      importMode,
+      candidatesCreated: usedReviewQueue ? acceptedCount : 0,
+      companiesImported: usedReviewQueue ? 0 : acceptedCount,
+    };
 
     await updateJobProgress(job.id, {
       status: finalStatus,
@@ -635,7 +666,7 @@ export async function runCollectionJob(
       rawResultCount: kakaoContext?.rawResultCount,
       completedAt: new Date(),
       lastMessage: completionMessage,
-      jobStats,
+      jobStats: enrichedStats,
     });
 
     const updatedJob = await prisma.targetCollectionJob.findUniqueOrThrow({
@@ -656,22 +687,31 @@ export async function runCollectionJob(
         duplicateCount,
         rejectedCount,
         dryRun,
+        importMode,
       });
       await writeActivityLog({
         eventType: "EXTERNAL_SEARCH_COMPLETED",
         summary: dryRun
           ? `외부 검색 미리보기 완료 (${acceptedCount}건 후보)`
-          : `외부 검색 완료 (신규 ${acceptedCount}건)`,
+          : usedReviewQueue
+            ? `외부 검색 후보 저장 완료 (${acceptedCount}건)`
+            : `외부 검색 완료 (신규 ${acceptedCount}건)`,
         projectId,
         collectionJobId: job.id,
-        metadata: { provider: providerName, dryRun, acceptedCount, duplicateCount },
+        metadata: {
+          provider: providerName,
+          dryRun,
+          importMode,
+          acceptedCount,
+          duplicateCount,
+        },
       });
       if (!dryRun) {
         await recordProviderSuccess(providerName);
       }
     }
 
-    return mapJobResult(updatedJob, gradeCounts, jobStats);
+    return mapJobResult(updatedJob, gradeCounts, enrichedStats);
   } catch (error) {
     collectionError(job.id, "수집 실패", error);
     collectionAudit(job.id, failedEvent, {
@@ -713,6 +753,27 @@ export async function runCollectionJob(
     });
 
     return mapJobResult(updatedJob, gradeCounts);
+  } finally {
+    // 프로세스 강제 종료가 아닌 경우 RUNNING 고착 방지
+    if (executionStarted) {
+      try {
+        const current = await prisma.targetCollectionJob.findUnique({
+          where: { id: job.id },
+          select: { status: true },
+        });
+        if (current?.status === CollectionJobStatus.RUNNING) {
+          await updateJobProgress(job.id, {
+            status: CollectionJobStatus.FAILED,
+            currentStep: CollectionProgressStep.FAILED,
+            completedAt: new Date(),
+            errorMessage: "작업이 비정상 종료되어 정리되었습니다.",
+            lastMessage: "수집 작업이 실패했습니다.",
+          });
+        }
+      } catch {
+        // ignore cleanup errors
+      }
+    }
   }
 }
 
